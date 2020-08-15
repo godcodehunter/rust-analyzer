@@ -10,6 +10,7 @@ import { PersistentState } from "./persistent_state";
 import { activateTaskProvider } from "./tasks";
 import { setContextValue } from "./util";
 import { exec } from "child_process";
+import { RunnableProvider } from './test_explorer';
 
 let ctx: Ctx | undefined;
 
