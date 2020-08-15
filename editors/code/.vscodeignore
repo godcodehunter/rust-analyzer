@@ -7,6 +7,7 @@ out/**
 !node_modules/@hpcc-js/wasm/dist/index.min.js
 !node_modules/@hpcc-js/wasm/dist/graphvizlib.wasm
 !node_modules/d3-graphviz/build/d3-graphviz.min.js
+!resources/
 !package.json
 !package-lock.json
 !ra_syntax_tree.tmGrammar.json
