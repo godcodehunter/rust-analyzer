@@ -528,8 +528,48 @@ pub struct CompletionImport {
     pub full_import_path: String,
     pub imported_name: String,
 }
+// Request for derive selected data and do subscribes to their changes
+pub enum SubscriptionRequest {}
 
 #[derive(Debug, Deserialize, Default)]
 pub struct ClientCommandOptions {
     pub commands: Vec<String>,
 }
+
+impl Request for SubscriptionRequest {
+    type Params = SubscriptionRequestParams;
+    type Result = String;
+    const METHOD: &'static str = "rust-analyzer/subscription";
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionRequestParams {
+    pub data_objects: Vec<String>
+}
+
+#[derive(Debug)]
+pub enum DataUpdate{}
+
+impl Notification for DataUpdate {
+    type Params = DataUpdateParams;
+    const METHOD: &'static str = "data/update";
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct DataUpdateParams {
+    pub patch: Patch,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct Patch {
+    pub delete: Vec<usize>,   
+    pub append: Vec<Append>,
+}   
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Append {
+    pub target_id: usize,
+    //TODO: ...
+} 
