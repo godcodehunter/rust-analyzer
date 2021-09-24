@@ -1,6 +1,7 @@
 //! This crate defines the core datastructure representing IDE state -- `RootDatabase`.
 //!
-//! It is mainly a `HirDatabase` for semantic analysis, plus a `SymbolsDatabase`, for fuzzy search.
+//! It is mainly a `HirDatabase` for semantic analysis, `SymbolsDatabase` for fuzzy search,
+//! and RunnableDatabaseStorage for providing informations about different executable runnables
 
 mod apply_change;
 
@@ -42,7 +43,8 @@ pub use base_db;
     hir::db::InternDatabaseStorage,
     hir::db::AstDatabaseStorage,
     hir::db::DefDatabaseStorage,
-    hir::db::HirDatabaseStorage
+    hir::db::HirDatabaseStorage,
+    RunnableDatabaseStorage,
 )]
 pub struct RootDatabase {
     // We use `ManuallyDrop` here because every codegen unit that contains a
