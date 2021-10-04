@@ -87,7 +87,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "miniz_oxide",
- "object",
+ "object 0.26.2",
  "rustc-demangle",
 ]
 
@@ -531,14 +531,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hir_runnables"
-version = "0.0.0"
-dependencies = [
- "base_db",
- "hir",
-]
-
-[[package]]
 name = "hir_ty"
 version = "0.0.0"
 dependencies = [
@@ -661,6 +653,7 @@ dependencies = [
  "expect-test",
  "fst",
  "hir",
+ "hir_def",
  "itertools",
  "limit",
  "once_cell",
@@ -1027,6 +1020,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "object"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39f37e50073ccad23b6d09bcb5b263f4e76d3bb6038e4a3c08e52162ffa8abc2"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1135,7 +1137,7 @@ name = "proc_macro_api"
 version = "0.0.0"
 dependencies = [
  "memmap2",
- "object",
+ "object 0.25.3",
  "paths",
  "profile",
  "serde",
@@ -1154,7 +1156,7 @@ dependencies = [
  "libloading",
  "mbe",
  "memmap2",
- "object",
+ "object 0.25.3",
  "paths",
  "proc_macro_api",
  "proc_macro_test",
