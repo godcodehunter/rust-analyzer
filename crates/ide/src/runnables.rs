@@ -109,6 +109,8 @@ impl Runnable {
                 => from_mod(sema, runnable),
             ide_db::runnables::RunnableView::Function(runnable)
                 => from_fn(sema, runnable),
+            ide_db::runnables::RunnableView::Doctest(_) 
+                => todo!(),
         }
     }
     

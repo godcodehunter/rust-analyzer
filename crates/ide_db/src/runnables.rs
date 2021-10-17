@@ -60,6 +60,8 @@ pub enum RunnableView {
     Doctest(Doctest),
 }
 
+//TODO: get runnable by defenition
+
 type WorkspaceRunnables = FxHashMap<Crate, CrateRunnables>;
 type CrateRunnables = FxHashMap<FileId, FileRunnables>;
 type FileRunnables = Vec<RunnableView>;
@@ -240,7 +242,7 @@ fn validate_start_signature() {
 }
 
 fn validate_bench_signature() {
-    
+    todo!()
 }
 
 /// Creates a test mod runnable for outline modules at the top of their definition.
