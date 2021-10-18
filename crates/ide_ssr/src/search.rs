@@ -5,11 +5,7 @@ use crate::{
     resolving::{ResolvedPath, ResolvedPattern, ResolvedRule},
     Match, MatchFinder,
 };
-use ide_db::{
-    base_db::{FileId, FileRange},
-    defs::Definition,
-    search::{SearchScope, UsageSearchResult},
-};
+use ide_db::{RootDatabase, base_db::{FileId, FileRange}, defs::Definition, search::{SearchScope, UsageSearchResult}};
 use rustc_hash::FxHashSet;
 use syntax::{ast, AstNode, SyntaxKind, SyntaxNode};
 
@@ -28,6 +24,7 @@ impl<'db> MatchFinder<'db> {
     /// and remove overlapping matches. This is done in the `nesting` module.
     pub(crate) fn find_matches_for_rule(
         &self,
+        db: &RootDatabase,
         rule: &ResolvedRule,
         usage_cache: &mut UsageCache,
         matches_out: &mut Vec<Match>,
@@ -42,14 +39,15 @@ impl<'db> MatchFinder<'db> {
             return;
         }
         if pick_path_for_usages(&rule.pattern).is_none() {
-            self.slow_scan(rule, matches_out);
+            self.slow_scan(db, rule, matches_out);
             return;
         }
-        self.find_matches_for_pattern_tree(rule, &rule.pattern, usage_cache, matches_out);
+        self.find_matches_for_pattern_tree(db, rule, &rule.pattern, usage_cache, matches_out);
     }
 
     fn find_matches_for_pattern_tree(
         &self,
+        db: &RootDatabase,
         rule: &ResolvedRule,
         pattern: &ResolvedPattern,
         usage_cache: &mut UsageCache,
@@ -57,7 +55,7 @@ impl<'db> MatchFinder<'db> {
     ) {
         if let Some(resolved_path) = pick_path_for_usages(pattern) {
             let definition: Definition = resolved_path.resolution.clone().into();
-            for file_range in self.find_usages(usage_cache, definition).file_ranges() {
+            for file_range in self.find_usages(db, usage_cache, definition).file_ranges() {
                 if let Some(node_to_match) = self.find_node_to_match(resolved_path, file_range) {
                     if !is_search_permitted_ancestors(&node_to_match) {
                         cov_mark::hit!(use_declaration_with_braces);
@@ -104,6 +102,7 @@ impl<'db> MatchFinder<'db> {
 
     fn find_usages<'a>(
         &self,
+        db: &RootDatabase,
         usage_cache: &'a mut UsageCache,
         definition: Definition,
     ) -> &'a UsageSearchResult {
@@ -112,7 +111,7 @@ impl<'db> MatchFinder<'db> {
         // cache miss. This is a limitation of NLL and is fixed with Polonius. For now we do two
         // lookups in the case of a cache hit.
         if usage_cache.find(&definition).is_none() {
-            let usages = definition.usages(&self.sema).in_scope(self.search_scope()).all();
+            let usages = definition.usages(&self.sema).in_scope(self.search_scope(db)).all(db);
             usage_cache.usages.push((definition, usages));
             return &usage_cache.usages.last().unwrap().1;
         }
@@ -121,32 +120,32 @@ impl<'db> MatchFinder<'db> {
 
     /// Returns the scope within which we want to search. We don't want un unrestricted search
     /// scope, since we don't want to find references in external dependencies.
-    fn search_scope(&self) -> SearchScope {
+    fn search_scope(&self, db: &RootDatabase) -> SearchScope {
         // FIXME: We should ideally have a test that checks that we edit local roots and not library
         // roots. This probably would require some changes to fixtures, since currently everything
         // seems to get put into a single source root.
         let mut files = Vec::new();
-        self.search_files_do(|file_id| {
+        self.search_files_do(db, |file_id| {
             files.push(file_id);
         });
         SearchScope::files(&files)
     }
 
-    fn slow_scan(&self, rule: &ResolvedRule, matches_out: &mut Vec<Match>) {
-        self.search_files_do(|file_id| {
+    fn slow_scan(&self, db: &RootDatabase, rule: &ResolvedRule, matches_out: &mut Vec<Match>) {
+        self.search_files_do(db,|file_id| {
             let file = self.sema.parse(file_id);
             let code = file.syntax();
             self.slow_scan_node(code, rule, &None, matches_out);
         })
     }
 
-    fn search_files_do(&self, mut callback: impl FnMut(FileId)) {
+    fn search_files_do(&self, db: &RootDatabase, mut callback: impl FnMut(FileId)) {
         if self.restrict_ranges.is_empty() {
             // Unrestricted search.
             use ide_db::base_db::SourceDatabaseExt;
             use ide_db::symbol_index::SymbolsDatabase;
-            for &root in self.sema.db.local_roots().iter() {
-                let sr = self.sema.db.source_root(root);
+            for &root in db.local_roots().iter() {
+                let sr = db.source_root(root);
                 for file_id in sr.iter() {
                     callback(file_id);
                 }

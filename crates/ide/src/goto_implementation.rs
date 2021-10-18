@@ -66,24 +66,24 @@ pub(crate) fn goto_implementation(
             .unique()
             .filter_map(|def| {
                 let navs = match def {
-                    hir::ModuleDef::Trait(trait_) => impls_for_trait(&sema, trait_),
-                    hir::ModuleDef::Adt(adt) => impls_for_ty(&sema, adt.ty(sema.db)),
-                    hir::ModuleDef::TypeAlias(alias) => impls_for_ty(&sema, alias.ty(sema.db)),
+                    hir::ModuleDef::Trait(trait_) => impls_for_trait(db, &sema, trait_),
+                    hir::ModuleDef::Adt(adt) => impls_for_ty(db, &sema, adt.ty(sema.db)),
+                    hir::ModuleDef::TypeAlias(alias) => impls_for_ty(db, &sema, alias.ty(sema.db)),
                     hir::ModuleDef::BuiltinType(builtin) => {
                         let module = sema.to_module_def(position.file_id)?;
-                        impls_for_ty(&sema, builtin.ty(sema.db, module))
+                        impls_for_ty(db, &sema, builtin.ty(sema.db, module))
                     }
                     hir::ModuleDef::Function(f) => {
                         let assoc = f.as_assoc_item(sema.db)?;
                         let name = assoc.name(sema.db)?;
                         let trait_ = assoc.containing_trait_or_trait_impl(sema.db)?;
-                        impls_for_trait_item(&sema, trait_, name)
+                        impls_for_trait_item(db, &sema, trait_, name)
                     }
                     hir::ModuleDef::Const(c) => {
                         let assoc = c.as_assoc_item(sema.db)?;
                         let name = assoc.name(sema.db)?;
                         let trait_ = assoc.containing_trait_or_trait_impl(sema.db)?;
-                        impls_for_trait_item(&sema, trait_, name)
+                        impls_for_trait_item(db, &sema, trait_, name)
                     }
                     _ => return None,
                 };
@@ -95,19 +95,20 @@ pub(crate) fn goto_implementation(
     Some(RangeInfo { range, info: navs })
 }
 
-fn impls_for_ty(sema: &Semantics<RootDatabase>, ty: hir::Type) -> Vec<NavigationTarget> {
-    Impl::all_for_type(sema.db, ty).into_iter().filter_map(|imp| imp.try_to_nav(sema.db)).collect()
+fn impls_for_ty(db: &RootDatabase, sema: &Semantics, ty: hir::Type) -> Vec<NavigationTarget> {
+    Impl::all_for_type(sema.db, ty).into_iter().filter_map(|imp| imp.try_to_nav(db)).collect()
 }
 
-fn impls_for_trait(sema: &Semantics<RootDatabase>, trait_: hir::Trait) -> Vec<NavigationTarget> {
+fn impls_for_trait(db: &RootDatabase, sema: &Semantics, trait_: hir::Trait) -> Vec<NavigationTarget> {
     Impl::all_for_trait(sema.db, trait_)
         .into_iter()
-        .filter_map(|imp| imp.try_to_nav(sema.db))
+        .filter_map(|imp| imp.try_to_nav(db))
         .collect()
 }
 
 fn impls_for_trait_item(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     trait_: hir::Trait,
     fun_name: hir::Name,
 ) -> Vec<NavigationTarget> {
@@ -118,7 +119,7 @@ fn impls_for_trait_item(
                 let itm_name = itm.name(sema.db)?;
                 (itm_name == fun_name).then(|| *itm)
             })?;
-            item.try_to_nav(sema.db)
+            item.try_to_nav(db)
         })
         .collect()
 }

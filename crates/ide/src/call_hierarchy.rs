@@ -60,7 +60,7 @@ pub(crate) fn incoming_calls(
             },
             ast::NameLike::Lifetime(_) => None,
         })
-        .flat_map(|func| func.usages(sema).all());
+        .flat_map(|func| func.usages(sema).all(db));
 
     for (_, references) in references {
         let references = references.into_iter().map(|FileReference { name, .. }| name);
@@ -68,7 +68,7 @@ pub(crate) fn incoming_calls(
             // This target is the containing function
             let nav = sema.ancestors_with_macros(name.syntax().clone()).find_map(|node| {
                 let def = ast::Fn::cast(node).and_then(|fn_| sema.to_def(&fn_))?;
-                def.try_to_nav(sema.db)
+                def.try_to_nav(db)
             });
             if let Some(nav) = nav {
                 calls.add(nav, sema.original_range(name.syntax()).range);

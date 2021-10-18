@@ -130,7 +130,7 @@ fn edit_struct_references(
         Either::Left(s) => Definition::ModuleDef(hir::ModuleDef::Adt(hir::Adt::Struct(s))),
         Either::Right(v) => Definition::ModuleDef(hir::ModuleDef::Variant(v)),
     };
-    let usages = strukt_def.usages(&ctx.sema).include_self_refs().all();
+    let usages = strukt_def.usages(&ctx.sema).include_self_refs().all(ctx.db());
 
     let edit_node = |edit: &mut AssistBuilder, node: SyntaxNode| -> Option<()> {
         match_ast! {
@@ -213,7 +213,7 @@ fn edit_field_references(
             None => continue,
         };
         let def = Definition::Field(field);
-        let usages = def.usages(&ctx.sema).all();
+        let usages = def.usages(&ctx.sema).all(ctx.db());
         for (file_id, refs) in usages {
             edit.edit_file(file_id);
             for r in refs {

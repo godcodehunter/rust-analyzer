@@ -1,4 +1,4 @@
-use hir::{db::AstDatabase, InFile};
+use hir::InFile;
 use ide_db::source_change::SourceChange;
 use syntax::{
     ast::{self, HasArgList},
@@ -43,7 +43,7 @@ fn fixes(
 
     let edit = TextEdit::replace(range_to_replace, replacement);
 
-    let source_change = SourceChange::from_text_edit(d.file.original_file(ctx.sema.db), edit);
+    let source_change = SourceChange::from_text_edit(d.file.original_file(ctx.sema.db.upcast()), edit);
 
     Some(vec![fix(
         "replace_with_find_map",

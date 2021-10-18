@@ -136,7 +136,7 @@ pub(crate) fn import_on_the_fly(acc: &mut Completions, ctx: &CompletionContext) 
 
     acc.add_all(
         import_assets
-            .search_for_imports(&ctx.sema, ctx.config.insert_use.prefix_kind)
+            .search_for_imports(ctx.db, &ctx.sema, ctx.config.insert_use.prefix_kind)
             .into_iter()
             .filter(|import| {
                 !ctx.is_item_hidden(&import.item_to_import)

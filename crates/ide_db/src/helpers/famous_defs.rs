@@ -1,8 +1,6 @@
 //! See [`FamousDefs`].
 use hir::{Crate, Enum, Module, ScopeDef, Semantics, Trait};
 
-use crate::RootDatabase;
-
 /// Helps with finding well-know things inside the standard library. This is
 /// somewhat similar to the known paths infra inside hir, but it different; We
 /// want to make sure that IDE specific paths don't become interesting inside
@@ -16,7 +14,7 @@ use crate::RootDatabase;
 /// ```
 /// //- minicore: iterator, ord, derive
 /// ```
-pub struct FamousDefs<'a, 'b>(pub &'a Semantics<'b, RootDatabase>, pub Option<Crate>);
+pub struct FamousDefs<'a, 'b>(pub &'a Semantics<'b>, pub Option<Crate>);
 
 #[allow(non_snake_case)]
 impl FamousDefs<'_, '_> {

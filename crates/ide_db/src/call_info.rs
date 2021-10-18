@@ -113,7 +113,7 @@ pub fn call_info(db: &RootDatabase, position: FilePosition) -> Option<CallInfo> 
 }
 
 fn call_info_impl(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     token: SyntaxToken,
 ) -> Option<(hir::Callable, Option<usize>)> {
     // Find the calling expression and it's NameRef
@@ -149,7 +149,7 @@ pub struct ActiveParameter {
 }
 
 impl ActiveParameter {
-    pub fn at_token(sema: &Semantics<RootDatabase>, token: SyntaxToken) -> Option<Self> {
+    pub fn at_token(sema: &Semantics, token: SyntaxToken) -> Option<Self> {
         let (signature, active_parameter) = call_info_impl(sema, token)?;
 
         let idx = active_parameter?;

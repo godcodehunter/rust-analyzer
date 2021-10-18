@@ -19,7 +19,8 @@ use crate::{
 };
 
 pub(super) fn element(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     krate: Option<hir::Crate>,
     bindings_shadow_count: &mut FxHashMap<hir::Name, u32>,
     syntactic_name_ref_highlighting: bool,
@@ -27,14 +28,15 @@ pub(super) fn element(
 ) -> Option<(Highlight, Option<u64>)> {
     match element {
         NodeOrToken::Node(it) => {
-            node(sema, krate, bindings_shadow_count, syntactic_name_ref_highlighting, it)
+            node(db, sema, krate, bindings_shadow_count, syntactic_name_ref_highlighting, it)
         }
-        NodeOrToken::Token(it) => Some((token(sema, krate, it)?, None)),
+        NodeOrToken::Token(it) => Some((token(db, sema, krate, it)?, None)),
     }
 }
 
 fn token(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     krate: Option<hir::Crate>,
     token: SyntaxToken,
 ) -> Option<Highlight> {
@@ -57,7 +59,7 @@ fn token(
             IDENT if parent_matches::<ast::TokenTree>(&token) => {
                 if let Some(attr) = token.ancestors().nth(2).and_then(ast::Attr::cast) {
                     match try_resolve_derive_input_at(sema, &attr, &token) {
-                        Some(makro) => highlight_def(sema, krate, Definition::Macro(makro)),
+                        Some(makro) => highlight_def(db, sema, krate, Definition::Macro(makro)),
                         None => HlTag::None.into(),
                     }
                 } else {
@@ -186,7 +188,8 @@ fn token(
 }
 
 fn node(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     krate: Option<hir::Crate>,
     bindings_shadow_count: &mut FxHashMap<hir::Name, u32>,
     syntactic_name_ref_highlighting: bool,
@@ -204,7 +207,7 @@ fn node(
             },
             // Highlight definitions depending on the "type" of the definition.
             ast::Name(name) => {
-                highlight_name(sema, bindings_shadow_count, &mut binding_hash, krate, name)
+                highlight_name(db, sema, bindings_shadow_count, &mut binding_hash, krate, name)
             },
             // Highlight references like the definitions they resolve to
             ast::NameRef(name_ref) => {
@@ -216,6 +219,7 @@ fn node(
                     highlight_name_ref_in_attr(sema, name_ref)
                 } else {
                     highlight_name_ref(
+                        db,
                         sema,
                         krate,
                         bindings_shadow_count,
@@ -228,10 +232,10 @@ fn node(
             ast::Lifetime(lifetime) => {
                 match NameClass::classify_lifetime(sema, &lifetime) {
                     Some(NameClass::Definition(def)) => {
-                        highlight_def(sema, krate, def) | HlMod::Definition
+                        highlight_def(db, sema, krate, def) | HlMod::Definition
                     }
                     None => match NameRefClass::classify_lifetime(sema, &lifetime) {
-                        Some(NameRefClass::Definition(def)) => highlight_def(sema, krate, def),
+                        Some(NameRefClass::Definition(def)) => highlight_def(db, sema, krate, def),
                         _ => SymbolKind::LifetimeParam.into(),
                     },
                     _ => Highlight::from(SymbolKind::LifetimeParam) | HlMod::Definition,
@@ -243,7 +247,7 @@ fn node(
     Some((highlight, binding_hash))
 }
 
-fn highlight_name_ref_in_attr(sema: &Semantics<RootDatabase>, name_ref: ast::NameRef) -> Highlight {
+fn highlight_name_ref_in_attr(sema: &Semantics, name_ref: ast::NameRef) -> Highlight {
     match NameRefClass::classify(sema, &name_ref) {
         Some(name_class) => match name_class {
             NameRefClass::Definition(Definition::ModuleDef(hir::ModuleDef::Module(_)))
@@ -266,14 +270,14 @@ fn highlight_name_ref_in_attr(sema: &Semantics<RootDatabase>, name_ref: ast::Nam
 }
 
 fn highlight_name_ref(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     krate: Option<hir::Crate>,
     bindings_shadow_count: &mut FxHashMap<hir::Name, u32>,
     binding_hash: &mut Option<u64>,
     syntactic_name_ref_highlighting: bool,
     name_ref: ast::NameRef,
 ) -> Highlight {
-    let db = sema.db;
     highlight_method_call_by_name_ref(sema, krate, &name_ref).unwrap_or_else(|| {
         let name_class = match NameRefClass::classify(sema, &name_ref) {
             Some(name_kind) => name_kind,
@@ -294,7 +298,7 @@ fn highlight_name_ref(
                     }
                 };
 
-                let mut h = highlight_def(sema, krate, def);
+                let mut h = highlight_def(db, sema, krate, def);
 
                 match def {
                     Definition::Local(local)
@@ -340,13 +344,13 @@ fn highlight_name_ref(
 }
 
 fn highlight_name(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     bindings_shadow_count: &mut FxHashMap<hir::Name, u32>,
     binding_hash: &mut Option<u64>,
     krate: Option<hir::Crate>,
     name: ast::Name,
 ) -> Highlight {
-    let db = sema.db;
     let name_kind = NameClass::classify(sema, &name);
     if let Some(NameClass::Definition(Definition::Local(local))) = &name_kind {
         if let Some(name) = local.name(db) {
@@ -357,7 +361,7 @@ fn highlight_name(
     };
     match name_kind {
         Some(NameClass::Definition(def)) => {
-            let mut h = highlight_def(sema, krate, def) | HlMod::Definition;
+            let mut h = highlight_def(db, sema, krate, def) | HlMod::Definition;
             if let Definition::ModuleDef(hir::ModuleDef::Trait(trait_)) = &def {
                 if trait_.is_unsafe(db) {
                     h |= HlMod::Unsafe;
@@ -365,7 +369,7 @@ fn highlight_name(
             }
             h
         }
-        Some(NameClass::ConstReference(def)) => highlight_def(sema, krate, def),
+        Some(NameClass::ConstReference(def)) => highlight_def(db, sema, krate, def),
         Some(NameClass::PatFieldShorthand { field_ref, .. }) => {
             let mut h = HlTag::Symbol(SymbolKind::Field).into();
             if let hir::VariantDef::Union(_) = field_ref.parent_def(db) {
@@ -390,11 +394,11 @@ fn calc_binding_hash(name: &hir::Name, shadow_count: u32) -> u64 {
 }
 
 fn highlight_def(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     krate: Option<hir::Crate>,
     def: Definition,
 ) -> Highlight {
-    let db = sema.db;
     let mut h = match def {
         Definition::Macro(_) => Highlight::new(HlTag::Symbol(SymbolKind::Macro)),
         Definition::Field(_) => Highlight::new(HlTag::Symbol(SymbolKind::Field)),
@@ -563,7 +567,7 @@ fn highlight_def(
 }
 
 fn highlight_method_call_by_name_ref(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     krate: Option<hir::Crate>,
     name_ref: &ast::NameRef,
 ) -> Option<Highlight> {
@@ -572,7 +576,7 @@ fn highlight_method_call_by_name_ref(
 }
 
 fn highlight_method_call(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     krate: Option<hir::Crate>,
     method_call: &ast::MethodCallExpr,
 ) -> Option<Highlight> {
@@ -658,7 +662,7 @@ fn highlight_name_by_syntax(name: ast::Name) -> Highlight {
 
 fn highlight_name_ref_by_syntax(
     name: ast::NameRef,
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     krate: Option<hir::Crate>,
 ) -> Highlight {
     let default = HlTag::UnresolvedReference;

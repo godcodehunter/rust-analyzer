@@ -1,5 +1,5 @@
-use hir::{db::AstDatabase, InFile};
-use ide_db::{assists::Assist, defs::NameClass};
+use hir::InFile;
+use ide_db::{RootDatabase, assists::Assist, defs::NameClass};
 use syntax::AstNode;
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 // Diagnostic: incorrect-ident-case
 //
 // This diagnostic is triggered if an item name doesn't follow https://doc.rust-lang.org/1.0.0/style/style/naming/README.html[Rust naming convention].
-pub(crate) fn incorrect_case(ctx: &DiagnosticsContext<'_>, d: &hir::IncorrectCase) -> Diagnostic {
+pub(crate) fn incorrect_case(ctx: &DiagnosticsContext<'_>, db: &RootDatabase, d: &hir::IncorrectCase) -> Diagnostic {
     Diagnostic::new(
         "incorrect-ident-case",
         format!(
@@ -23,21 +23,21 @@ pub(crate) fn incorrect_case(ctx: &DiagnosticsContext<'_>, d: &hir::IncorrectCas
         ctx.sema.diagnostics_display_range(InFile::new(d.file, d.ident.clone().into())).range,
     )
     .severity(Severity::WeakWarning)
-    .with_fixes(fixes(ctx, d))
+    .with_fixes(fixes(ctx, db, d))
 }
 
-fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::IncorrectCase) -> Option<Vec<Assist>> {
+fn fixes(ctx: &DiagnosticsContext<'_>, db: &RootDatabase, d: &hir::IncorrectCase) -> Option<Vec<Assist>> {
     let root = ctx.sema.db.parse_or_expand(d.file)?;
     let name_node = d.ident.to_node(&root);
     let def = NameClass::classify(&ctx.sema, &name_node)?.defined()?;
 
     let name_node = InFile::new(d.file, name_node.syntax());
-    let frange = name_node.original_file_range(ctx.sema.db);
+    let frange = name_node.original_file_range(ctx.sema.db.upcast());
 
     let label = format!("Rename to {}", d.suggested_text);
     let mut res = unresolved_fix("change_case", &label, frange.range);
     if ctx.resolve.should_resolve(&res.id) {
-        let source_change = def.rename(&ctx.sema, &d.suggested_text);
+        let source_change = def.rename(db, &ctx.sema, &d.suggested_text);
         res.source_change = Some(source_change.ok().unwrap_or_default());
     }
 

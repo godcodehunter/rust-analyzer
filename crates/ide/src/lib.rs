@@ -44,7 +44,6 @@ mod move_item;
 mod parent_module;
 mod references;
 mod rename;
-mod runnables;
 mod ssr;
 mod static_index;
 mod status;
@@ -400,7 +399,7 @@ impl Analysis {
         position: FilePosition,
         search_scope: Option<SearchScope>,
     ) -> Cancellable<Option<Vec<ReferenceSearchResult>>> {
-        self.with_db(|db| references::find_all_refs(&Semantics::new(db), position, search_scope))
+        self.with_db(|db| references::find_all_refs(db, &Semantics::new(db), position, search_scope))
     }
 
     /// Finds all methods and free functions for the file. Does not return tests!
@@ -494,7 +493,7 @@ impl Analysis {
         position: FilePosition,
     ) -> Cancellable<Option<Vec<HighlightedRange>>> {
         self.with_db(|db| {
-            highlight_related::highlight_related(&Semantics::new(db), config, position)
+            highlight_related::highlight_related(db, &Semantics::new(db), config, position)
         })
     }
 
@@ -630,7 +629,7 @@ impl Analysis {
             let mut match_finder =
                 ide_ssr::MatchFinder::in_context(db, resolve_context, selections);
             match_finder.add_rule(rule)?;
-            let edits = if parse_only { Default::default() } else { match_finder.edits() };
+            let edits = if parse_only { Default::default() } else { match_finder.edits(db) };
             Ok(SourceChange::from(edits))
         })
     }

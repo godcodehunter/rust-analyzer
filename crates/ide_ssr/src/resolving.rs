@@ -184,7 +184,7 @@ impl Resolver<'_, '_> {
 
 impl<'db> ResolutionScope<'db> {
     pub(crate) fn new(
-        sema: &hir::Semantics<'db, ide_db::RootDatabase>,
+        sema: &hir::Semantics<'db>,
         resolve_context: FilePosition,
     ) -> ResolutionScope<'db> {
         use syntax::ast::AstNode;

@@ -2,7 +2,6 @@ mod sourcegen;
 mod generated;
 
 use expect_test::expect;
-use hir::Semantics;
 use ide_db::{
     base_db::{fixture::WithFixture, FileId, FileRange, SourceDatabaseExt},
     helpers::{
@@ -122,9 +121,8 @@ fn check(handler: Handler, before: &str, expected: ExpectedResult, assist_label:
 
     let frange = FileRange { file_id: file_with_caret_id, range: range_or_offset.into() };
 
-    let sema = Semantics::new(&db);
     let config = TEST_CONFIG;
-    let ctx = AssistContext::new(sema, &config, frange);
+    let ctx = AssistContext::new(&db, &config, frange);
     let resolve = match expected {
         ExpectedResult::Unresolved => AssistResolveStrategy::None,
         _ => AssistResolveStrategy::All,

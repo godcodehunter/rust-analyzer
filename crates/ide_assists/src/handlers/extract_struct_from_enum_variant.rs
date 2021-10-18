@@ -64,7 +64,7 @@ pub(crate) fn extract_struct_from_enum_variant(
             let variant_hir_name = variant_hir.name(ctx.db());
             let enum_module_def = ModuleDef::from(enum_hir);
             let usages =
-                Definition::ModuleDef(ModuleDef::Variant(variant_hir)).usages(&ctx.sema).all();
+                Definition::ModuleDef(ModuleDef::Variant(variant_hir)).usages(&ctx.sema).all(ctx.db());
 
             let mut visited_modules_set = FxHashSet::default();
             let current_module = enum_hir.module(ctx.db());
@@ -307,7 +307,7 @@ fn process_references(
             let scope_node = builder.make_syntax_mut(scope_node);
             if !visited_modules.contains(&module) {
                 let mod_path = module.find_use_path_prefixed(
-                    ctx.sema.db,
+                    ctx.sema.db.upcast(),
                     *enum_module_def,
                     ctx.config.insert_use.prefix_kind,
                 );
@@ -325,7 +325,7 @@ fn process_references(
 }
 
 fn reference_to_node(
-    sema: &hir::Semantics<RootDatabase>,
+    sema: &hir::Semantics,
     reference: FileReference,
 ) -> Option<(ast::PathSegment, SyntaxNode, hir::Module)> {
     let segment =

@@ -12,7 +12,6 @@ use ide_db::{
         FamousDefs,
     },
     search::{FileReference, ReferenceCategory, SearchScope},
-    RootDatabase,
 };
 use itertools::Itertools;
 use rustc_hash::FxHasher;
@@ -138,7 +137,7 @@ pub(crate) fn extract_function(acc: &mut Assists, ctx: &AssistContext) -> Option
 
                 if let Some(control_flow_enum) = control_flow_enum {
                     let mod_path = module.find_use_path_prefixed(
-                        ctx.sema.db,
+                        ctx.sema.db.upcast(),
                         ModuleDef::from(control_flow_enum),
                         ctx.config.insert_use.prefix_kind,
                     );
@@ -341,7 +340,7 @@ impl LocalUsages {
             Definition::Local(var)
                 .usages(&ctx.sema)
                 .in_scope(SearchScope::single_file(ctx.file_id()))
-                .all(),
+                .all(ctx.db()),
         )
     }
 
@@ -618,7 +617,7 @@ impl FunctionBody {
     /// whether it contains an await expression.
     fn analyze(
         &self,
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
     ) -> (FxIndexSet<Local>, Option<ast::SelfParam>) {
         let mut self_param = None;
         let mut res = FxIndexSet::default();
@@ -663,7 +662,7 @@ impl FunctionBody {
         (res, self_param)
     }
 
-    fn analyze_container(&self, sema: &Semantics<RootDatabase>) -> Option<ContainerInfo> {
+    fn analyze_container(&self, sema: &Semantics) -> Option<ContainerInfo> {
         let mut ancestors = self.parent()?.ancestors();
         let infer_expr_opt = |expr| sema.type_of_expr(&expr?).map(TypeInfo::adjusted);
         let mut parent_loop = None;
@@ -1023,7 +1022,7 @@ fn path_element_of_reference(
 
 /// list local variables defined inside `body`
 fn locals_defined_in_body(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     body: &FunctionBody,
 ) -> FxIndexSet<Local> {
     // FIXME: this doesn't work well with macros

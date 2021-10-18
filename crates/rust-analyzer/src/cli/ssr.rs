@@ -29,7 +29,7 @@ impl flags::Ssr {
         for rule in self.rule {
             match_finder.add_rule(rule)?;
         }
-        let edits = match_finder.edits();
+        let edits = match_finder.edits(db);
         for (file_id, edit) in edits {
             if let Some(path) = vfs.file_path(file_id).as_path() {
                 let mut contents = db.file_text(file_id).to_string();
@@ -75,7 +75,7 @@ impl flags::Search {
                 }
             }
         } else {
-            for m in match_finder.matches().flattened().matches {
+            for m in match_finder.matches(db).flattened().matches {
                 // We could possibly at some point do something more useful than just printing
                 // the matched text. For now though, that's the easiest thing to do.
                 println!("{}", m.matched_text());

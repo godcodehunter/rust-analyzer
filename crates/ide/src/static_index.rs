@@ -138,7 +138,7 @@ impl StaticIndex<'_> {
                 *x
             } else {
                 let x = self.tokens.insert(TokenStaticData {
-                    hover: hover_for_definition(&sema, file_id, def, &node, &hover_config),
+                    hover: hover_for_definition(self.db, &sema, file_id, def, &node, &hover_config),
                     definition: def
                         .try_to_nav(self.db)
                         .map(|x| FileRange { file_id: x.file_id, range: x.focus_or_full_range() }),
@@ -189,7 +189,7 @@ impl StaticIndex<'_> {
     }
 }
 
-fn get_definition(sema: &Semantics<RootDatabase>, token: SyntaxToken) -> Option<Definition> {
+fn get_definition(sema: &Semantics, token: SyntaxToken) -> Option<Definition> {
     for token in sema.descend_into_macros(token) {
         let def = Definition::from_token(sema, &token);
         if let [x] = def.as_slice() {

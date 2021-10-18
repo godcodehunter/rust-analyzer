@@ -3,7 +3,6 @@ use ide_db::{
     base_db::FileId,
     defs::{Definition, NameRefClass},
     helpers::SnippetCap,
-    RootDatabase,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use stdx::to_lower_snake_case;
@@ -170,7 +169,7 @@ fn get_adt_source(
     adt: &hir::Adt,
     fn_name: &str,
 ) -> Option<(Option<ast::Impl>, FileId)> {
-    let range = adt.source(ctx.sema.db)?.syntax().original_file_range(ctx.sema.db);
+    let range = adt.source(ctx.sema.db)?.syntax().original_file_range(ctx.sema.db.upcast());
     let file = ctx.sema.parse(range.file_id);
     let adt_source =
         ctx.sema.find_node_at_offset_with_macros(file.syntax(), range.range.start())?;
@@ -368,7 +367,7 @@ fn get_fn_target(
     let target = match target_module {
         Some(target_module) => {
             let module_source = target_module.definition_source(ctx.db());
-            let (in_file, target) = next_space_for_fn_in_module(ctx.sema.db, &module_source)?;
+            let (in_file, target) = next_space_for_fn_in_module(ctx.sema.db.upcast(), &module_source)?;
             file = in_file;
             target
         }
@@ -385,7 +384,7 @@ fn get_method_target(
     let target = match impl_ {
         Some(impl_) => next_space_for_fn_in_impl(impl_)?,
         None => {
-            next_space_for_fn_in_module(ctx.sema.db, &target_module.definition_source(ctx.sema.db))?
+            next_space_for_fn_in_module(ctx.sema.db.upcast(), &target_module.definition_source(ctx.sema.db))?
                 .1
         }
     };
@@ -487,7 +486,7 @@ fn deduplicate_arg_names(arg_names: &mut Vec<String>) {
     }
 }
 
-fn fn_arg_name(sema: &Semantics<RootDatabase>, arg_expr: &ast::Expr) -> String {
+fn fn_arg_name(sema: &Semantics, arg_expr: &ast::Expr) -> String {
     let name = (|| match arg_expr {
         ast::Expr::CastExpr(cast_expr) => Some(fn_arg_name(sema, &cast_expr.expr()?)),
         expr => {

@@ -1,4 +1,3 @@
-use hir::db::AstDatabase;
 use ide_db::source_change::SourceChange;
 use syntax::AstNode;
 use text_edit::TextEdit;
@@ -29,7 +28,7 @@ fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::AddReferenceHere) -> Option<Vec<
     let arg_range = arg_expr.syntax().text_range();
     let edit = TextEdit::replace(arg_range, arg_with_ref);
     let source_change =
-        SourceChange::from_text_edit(d.expr.file_id.original_file(ctx.sema.db), edit);
+        SourceChange::from_text_edit(d.expr.file_id.original_file(ctx.sema.db.upcast()), edit);
 
     Some(vec![fix("add_reference_here", "Add reference here", source_change, arg_range)])
 }

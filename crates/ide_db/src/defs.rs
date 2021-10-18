@@ -6,10 +6,7 @@
 // FIXME: this badly needs rename/rewrite (matklad, 2020-02-06).
 
 use arrayvec::ArrayVec;
-use hir::{
-    Field, GenericParam, HasVisibility, Impl, Label, Local, MacroDef, Module, ModuleDef, Name,
-    PathResolution, Semantics, Visibility,
-};
+use hir::{Field, GenericParam, HasVisibility, Impl, Label, Local, MacroDef, Module, ModuleDef, Name, PathResolution, Semantics, Visibility, db::HirDatabase};
 use syntax::{
     ast::{self, AstNode},
     match_ast, SyntaxKind, SyntaxNode, SyntaxToken,
@@ -31,7 +28,7 @@ pub enum Definition {
 
 impl Definition {
     pub fn from_token(
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
         token: &SyntaxToken,
     ) -> ArrayVec<Definition, 2> {
         let parent = match token.parent() {
@@ -53,7 +50,7 @@ impl Definition {
         }
     }
 
-    pub fn from_node(sema: &Semantics<RootDatabase>, node: &SyntaxNode) -> ArrayVec<Definition, 2> {
+    pub fn from_node(sema: &Semantics, node: &SyntaxNode) -> ArrayVec<Definition, 2> {
         let mut res = ArrayVec::new();
         (|| {
             match_ast! {
@@ -121,7 +118,7 @@ impl Definition {
         }
     }
 
-    pub fn name(&self, db: &RootDatabase) -> Option<Name> {
+    pub fn name(&self, db: &dyn HirDatabase) -> Option<Name> {
         let name = match self {
             Definition::Macro(it) => it.name(db)?,
             Definition::Field(it) => it.name(db),
@@ -185,7 +182,7 @@ impl NameClass {
         Some(res)
     }
 
-    pub fn classify(sema: &Semantics<RootDatabase>, name: &ast::Name) -> Option<NameClass> {
+    pub fn classify(sema: &Semantics, name: &ast::Name) -> Option<NameClass> {
         let _p = profile::span("classify_name");
 
         let parent = name.syntax().parent()?;
@@ -312,7 +309,7 @@ impl NameClass {
     }
 
     pub fn classify_lifetime(
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
         lifetime: &ast::Lifetime,
     ) -> Option<NameClass> {
         let _p = profile::span("classify_lifetime").detail(|| lifetime.to_string());
@@ -350,7 +347,7 @@ impl NameRefClass {
     // Note: we don't have unit-tests for this rather important function.
     // It is primarily exercised via goto definition tests in `ide`.
     pub fn classify(
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
         name_ref: &ast::NameRef,
     ) -> Option<NameRefClass> {
         let _p = profile::span("classify_name_ref").detail(|| name_ref.to_string());
@@ -458,7 +455,7 @@ impl NameRefClass {
     }
 
     pub fn classify_lifetime(
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
         lifetime: &ast::Lifetime,
     ) -> Option<NameRefClass> {
         let _p = profile::span("classify_lifetime_ref").detail(|| lifetime.to_string());

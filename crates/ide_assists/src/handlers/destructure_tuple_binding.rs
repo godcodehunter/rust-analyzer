@@ -116,7 +116,7 @@ fn collect_data(ident_pat: IdentPat, ctx: &AssistContext) -> Option<TupleData> {
         Definition::Local(def)
             .usages(&ctx.sema)
             .in_scope(SearchScope::single_file(ctx.file_id()))
-            .all()
+            .all(ctx.db())
     });
 
     let field_names = (0..field_types.len())

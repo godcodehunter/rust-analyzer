@@ -69,7 +69,6 @@ mod assist_context;
 mod tests;
 pub mod utils;
 
-use hir::Semantics;
 use ide_db::{base_db::FileRange, RootDatabase};
 use syntax::TextRange;
 
@@ -90,8 +89,7 @@ pub fn assists(
     resolve: AssistResolveStrategy,
     range: FileRange,
 ) -> Vec<Assist> {
-    let sema = Semantics::new(db);
-    let ctx = AssistContext::new(sema, config, range);
+    let ctx = AssistContext::new(db, config, range);
     let mut acc = Assists::new(&ctx, resolve);
     handlers::all().iter().for_each(|handler| {
         handler(&mut acc, &ctx);

@@ -5,8 +5,8 @@ mod gen_trait_fn_body;
 
 use std::ops;
 
-use hir::HasSource;
-use ide_db::{helpers::SnippetCap, path_transform::PathTransform, RootDatabase};
+use hir::{HasSource, db::HirDatabase};
+use ide_db::{helpers::SnippetCap, path_transform::PathTransform};
 use itertools::Itertools;
 use stdx::format_to;
 use syntax::{
@@ -90,7 +90,7 @@ pub enum DefaultMethods {
 }
 
 pub fn filter_assoc_items(
-    db: &RootDatabase,
+    db: &dyn HirDatabase,
     items: &[hir::AssocItem],
     default_methods: DefaultMethods,
 ) -> Vec<ast::AssocItem> {
@@ -127,7 +127,7 @@ pub fn filter_assoc_items(
 }
 
 pub fn add_trait_assoc_items_to_impl(
-    sema: &hir::Semantics<ide_db::RootDatabase>,
+    sema: &hir::Semantics,
     items: Vec<ast::AssocItem>,
     trait_: hir::Trait,
     impl_: ast::Impl,

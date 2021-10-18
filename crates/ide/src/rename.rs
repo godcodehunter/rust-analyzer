@@ -66,15 +66,15 @@ pub(crate) fn rename(
     if let Definition::Local(local) = def {
         if let Some(self_param) = local.as_self_param(sema.db) {
             cov_mark::hit!(rename_self_to_param);
-            return rename_self_to_param(&sema, local, self_param, new_name);
+            return rename_self_to_param(db, &sema, local, self_param, new_name);
         }
         if new_name == "self" {
             cov_mark::hit!(rename_to_self);
-            return rename_to_self(&sema, local);
+            return rename_to_self(db, &sema, local);
         }
     }
 
-    def.rename(&sema, new_name)
+    def.rename(&db, &sema, new_name)
 }
 
 /// Called by the client when it is about to rename a file.
@@ -86,13 +86,13 @@ pub(crate) fn will_rename_file(
     let sema = Semantics::new(db);
     let module = sema.to_module_def(file_id)?;
     let def = Definition::ModuleDef(module.into());
-    let mut change = def.rename(&sema, new_name_stem).ok()?;
+    let mut change = def.rename(db, &sema, new_name_stem).ok()?;
     change.file_system_edits.clear();
     Some(change)
 }
 
 fn find_definition(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     syntax: &SyntaxNode,
     position: FilePosition,
 ) -> RenameResult<(ast::NameLike, Definition)> {
@@ -146,7 +146,7 @@ fn find_definition(
     Ok((name_like, def))
 }
 
-fn rename_to_self(sema: &Semantics<RootDatabase>, local: hir::Local) -> RenameResult<SourceChange> {
+fn rename_to_self(db: &RootDatabase, sema: &Semantics, local: hir::Local) -> RenameResult<SourceChange> {
     if never!(local.is_self(sema.db)) {
         bail!("rename_to_self invoked on self");
     }
@@ -196,20 +196,21 @@ fn rename_to_self(sema: &Semantics<RootDatabase>, local: hir::Local) -> RenameRe
         first_param.source(sema.db).ok_or_else(|| format_err!("No source for parameter found"))?;
 
     let def = Definition::Local(local);
-    let usages = def.usages(sema).all();
+    let usages = def.usages(sema).all(db);
     let mut source_change = SourceChange::default();
     source_change.extend(usages.iter().map(|(&file_id, references)| {
         (file_id, source_edit_from_references(references, def, "self"))
     }));
     source_change.insert_source_edit(
-        file_id.original_file(sema.db),
+        file_id.original_file(sema.db.upcast()),
         TextEdit::replace(param_source.syntax().text_range(), String::from(self_param)),
     );
     Ok(source_change)
 }
 
 fn rename_self_to_param(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     local: hir::Local,
     self_param: hir::SelfParam,
     new_name: &str,
@@ -226,14 +227,14 @@ fn rename_self_to_param(
         self_param.source(sema.db).ok_or_else(|| format_err!("cannot find function source"))?;
 
     let def = Definition::Local(local);
-    let usages = def.usages(sema).all();
+    let usages = def.usages(sema).all(db);
     let edit = text_edit_from_self_param(&self_param, new_name)
         .ok_or_else(|| format_err!("No target type found"))?;
     if usages.len() > 1 && identifier_kind == IdentifierKind::Underscore {
         bail!("Cannot rename reference to `_` as it is being referenced multiple times");
     }
     let mut source_change = SourceChange::default();
-    source_change.insert_source_edit(file_id.original_file(sema.db), edit);
+    source_change.insert_source_edit(file_id.original_file(sema.db.upcast()), edit);
     source_change.extend(usages.iter().map(|(&file_id, references)| {
         (file_id, source_edit_from_references(references, def, new_name))
     }));

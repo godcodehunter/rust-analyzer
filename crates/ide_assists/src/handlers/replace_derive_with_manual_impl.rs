@@ -61,6 +61,7 @@ pub(crate) fn replace_derive_with_manual_impl(
     let current_crate = current_module.krate();
 
     let found_traits = items_locator::items_with_name(
+        ctx.db(),
         &ctx.sema,
         current_crate,
         NameToImport::Exact(trait_name.to_string()),
@@ -73,7 +74,7 @@ pub(crate) fn replace_derive_with_manual_impl(
     })
     .flat_map(|trait_| {
         current_module
-            .find_use_path(ctx.sema.db, hir::ModuleDef::Trait(trait_))
+            .find_use_path(ctx.sema.db.upcast(), hir::ModuleDef::Trait(trait_))
             .as_ref()
             .map(mod_path_to_ast)
             .zip(Some(trait_))
@@ -148,7 +149,7 @@ fn add_assist(
 }
 
 fn impl_def_from_trait(
-    sema: &hir::Semantics<ide_db::RootDatabase>,
+    sema: &hir::Semantics,
     adt: &ast::Adt,
     annotated_name: &ast::Name,
     trait_: Option<hir::Trait>,

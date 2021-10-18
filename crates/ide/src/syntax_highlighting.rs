@@ -177,6 +177,7 @@ pub(crate) fn highlight(
 
     let mut hl = highlights::Highlights::new(root.text_range());
     traverse(
+        db,
         &mut hl,
         &sema,
         InFile::new(file_id.into(), &root),
@@ -188,8 +189,9 @@ pub(crate) fn highlight(
 }
 
 fn traverse(
+    db: &RootDatabase,
     hl: &mut Highlights,
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     root: InFile<&SyntaxNode>,
     krate: Option<hir::Crate>,
     range_to_highlight: TextRange,
@@ -335,6 +337,7 @@ fn traverse(
         }
 
         if let Some((mut highlight, binding_hash)) = highlight::element(
+            db,
             sema,
             krate,
             &mut bindings_shadow_count,

@@ -170,7 +170,7 @@ pub(crate) fn resolve_annotation(db: &RootDatabase, mut annotation: Annotation) 
             *data = goto_implementation(db, *position).map(|range| range.info);
         }
         AnnotationKind::HasReferences { position, data } => {
-            *data = find_all_refs(&Semantics::new(db), *position, None).map(|result| {
+            *data = find_all_refs(db, &Semantics::new(db), *position, None).map(|result| {
                 result
                     .into_iter()
                     .flat_map(|res| res.references)

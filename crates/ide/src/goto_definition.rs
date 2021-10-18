@@ -5,7 +5,7 @@ use crate::{
 };
 use hir::{AsAssocItem, ModuleDef, Semantics};
 use ide_db::{
-    base_db::{AnchoredPath, FileId, FileLoader},
+    base_db::{AnchoredPath, FileId},
     defs::Definition,
     helpers::pick_best_token,
     RootDatabase,
@@ -58,8 +58,8 @@ pub(crate) fn goto_definition(
                 Definition::from_token(sema, &token)
                     .into_iter()
                     .flat_map(|def| {
-                        try_find_trait_item_definition(sema.db, &def)
-                            .unwrap_or_else(|| def_to_nav(sema.db, def))
+                        try_find_trait_item_definition(db, &def)
+                            .unwrap_or_else(|| def_to_nav(db, def))
                     })
                     .collect::<Vec<_>>(),
             )
@@ -72,7 +72,7 @@ pub(crate) fn goto_definition(
 }
 
 fn try_lookup_include_path(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     tt: ast::TokenTree,
     token: SyntaxToken,
     file_id: FileId,

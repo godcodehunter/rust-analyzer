@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use ide_db::{helpers::FamousDefs, RootDatabase};
+use ide_db::{helpers::FamousDefs};
 use syntax::{
     ast::{self, HasName},
     AstNode, SyntaxNode,
@@ -104,7 +104,7 @@ fn generate_edit(
 }
 
 fn existing_deref_impl(
-    sema: &'_ hir::Semantics<'_, RootDatabase>,
+    sema: &'_ hir::Semantics,
     strukt: &ast::Struct,
 ) -> Option<()> {
     let strukt = sema.to_def(strukt)?;

@@ -11,17 +11,15 @@ use std::collections::VecDeque;
 
 use base_db::FileId;
 use either::Either;
-use hir::{ItemInNs, MacroDef, ModuleDef, Name, Semantics};
+use hir::{ItemInNs, MacroDef, ModuleDef, Name, Semantics, db::HirDatabase};
 use syntax::{
     ast::{self, make, HasLoopBody},
     AstNode, Direction, SyntaxElement, SyntaxKind, SyntaxToken, TokenAtOffset, WalkEvent, T,
 };
 
-use crate::RootDatabase;
-
 pub use self::famous_defs::FamousDefs;
 
-pub fn item_name(db: &RootDatabase, item: ItemInNs) -> Option<Name> {
+pub fn item_name(db: &dyn HirDatabase, item: ItemInNs) -> Option<Name> {
     match item {
         ItemInNs::Types(module_def_id) => ModuleDef::from(module_def_id).name(db),
         ItemInNs::Values(module_def_id) => ModuleDef::from(module_def_id).name(db),
@@ -31,7 +29,7 @@ pub fn item_name(db: &RootDatabase, item: ItemInNs) -> Option<Name> {
 
 /// Resolves the path at the cursor token as a derive macro if it inside a token tree of a derive attribute.
 pub fn try_resolve_derive_input_at(
-    sema: &hir::Semantics<RootDatabase>,
+    sema: &hir::Semantics,
     derive_attr: &ast::Attr,
     cursor: &SyntaxToken,
 ) -> Option<MacroDef> {
@@ -95,7 +93,7 @@ pub fn mod_path_to_ast(path: &hir::ModPath) -> ast::Path {
 
 /// Iterates all `ModuleDef`s and `Impl` blocks of the given file.
 pub fn visit_file_defs(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     file_id: FileId,
     cb: &mut dyn FnMut(Either<hir::ModuleDef, hir::Impl>),
 ) {

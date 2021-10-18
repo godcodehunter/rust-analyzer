@@ -80,7 +80,7 @@ pub(crate) fn inlay_hints(
                 _ => (),
             }
         } else if let Some(it) = ast::IdentPat::cast(node.clone()) {
-            get_bind_pat_hints(&mut res, &sema, config, &it);
+            get_bind_pat_hints(db, &mut res, &sema, config, &it);
         }
     }
     res
@@ -88,7 +88,7 @@ pub(crate) fn inlay_hints(
 
 fn get_chaining_hints(
     acc: &mut Vec<InlayHint>,
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     config: &InlayHintsConfig,
     expr: &ast::Expr,
 ) -> Option<()> {
@@ -149,7 +149,7 @@ fn get_chaining_hints(
 
 fn get_param_name_hints(
     acc: &mut Vec<InlayHint>,
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     config: &InlayHintsConfig,
     expr: ast::Expr,
 ) -> Option<()> {
@@ -188,8 +188,9 @@ fn get_param_name_hints(
 }
 
 fn get_bind_pat_hints(
+    db: &RootDatabase,
     acc: &mut Vec<InlayHint>,
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     config: &InlayHintsConfig,
     pat: &ast::IdentPat,
 ) -> Option<()> {
@@ -201,7 +202,7 @@ fn get_bind_pat_hints(
     let desc_pat = descended.as_ref().unwrap_or(pat);
     let ty = sema.type_of_pat(&desc_pat.clone().into())?.original;
 
-    if should_not_display_type_hint(sema, pat, &ty) {
+    if should_not_display_type_hint(db, sema, pat, &ty) {
         return None;
     }
 
@@ -233,7 +234,7 @@ fn get_bind_pat_hints(
 }
 
 fn is_named_constructor(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     pat: &ast::IdentPat,
     ty_name: &str,
 ) -> Option<()> {
@@ -290,7 +291,7 @@ fn is_named_constructor(
 
 /// Checks if the type is an Iterator from std::iter and replaces its hint with an `impl Iterator<Item = Ty>`.
 fn hint_iterator(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     famous_defs: &FamousDefs,
     config: &InlayHintsConfig,
     ty: &hir::Type,
@@ -352,12 +353,11 @@ fn pat_is_enum_variant(db: &RootDatabase, bind_pat: &ast::IdentPat, pat_ty: &hir
 }
 
 fn should_not_display_type_hint(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     bind_pat: &ast::IdentPat,
     pat_ty: &hir::Type,
 ) -> bool {
-    let db = sema.db;
-
     if pat_ty.is_unknown() {
         return true;
     }
@@ -399,7 +399,7 @@ fn should_not_display_type_hint(
 }
 
 fn should_hide_param_name_hint(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     callable: &hir::Callable,
     param_name: &str,
     argument: &ast::Expr,
@@ -470,7 +470,7 @@ fn is_param_name_suffix_of_fn_name(
 }
 
 fn is_enum_name_similar_to_param_name(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     argument: &ast::Expr,
     param_name: &str,
 ) -> bool {
@@ -506,7 +506,7 @@ fn is_obvious_param(param_name: &str) -> bool {
 }
 
 fn get_callable(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     expr: &ast::Expr,
 ) -> Option<(hir::Callable, ast::ArgList)> {
     match expr {

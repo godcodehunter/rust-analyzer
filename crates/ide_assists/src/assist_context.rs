@@ -55,7 +55,8 @@ use crate::{
 /// easier to just compute the edit eagerly :-)
 pub(crate) struct AssistContext<'a> {
     pub(crate) config: &'a AssistConfig,
-    pub(crate) sema: Semantics<'a, RootDatabase>,
+    db: &'a RootDatabase,
+    pub(crate) sema: Semantics<'a>,
     frange: FileRange,
     trimmed_range: TextRange,
     source_file: SourceFile,
@@ -63,10 +64,11 @@ pub(crate) struct AssistContext<'a> {
 
 impl<'a> AssistContext<'a> {
     pub(crate) fn new(
-        sema: Semantics<'a, RootDatabase>,
+        db: &'a RootDatabase,
         config: &'a AssistConfig,
         frange: FileRange,
     ) -> AssistContext<'a> {
+        let sema = Semantics::new(db);
         let source_file = sema.parse(frange.file_id);
 
         let start = frange.range.start();
@@ -86,11 +88,11 @@ impl<'a> AssistContext<'a> {
             _ => frange.range,
         };
 
-        AssistContext { config, sema, frange, source_file, trimmed_range }
+        AssistContext { config, db, sema, frange, source_file, trimmed_range }
     }
 
     pub(crate) fn db(&self) -> &RootDatabase {
-        self.sema.db
+        self.db
     }
 
     // NB, this ignores active selection.

@@ -99,7 +99,7 @@ fn assert_ssr_transforms(rules: &[&str], input: &str, expected: Expect) {
         let rule: SsrRule = rule.parse().unwrap();
         match_finder.add_rule(rule).unwrap();
     }
-    let edits = match_finder.edits();
+    let edits = match_finder.edits(&db);
     if edits.is_empty() {
         panic!("No edits were made");
     }
@@ -127,7 +127,7 @@ fn assert_matches(pattern: &str, code: &str, expected: &[&str]) {
     let mut match_finder = MatchFinder::in_context(&db, position, selections);
     match_finder.add_search_pattern(pattern.parse().unwrap()).unwrap();
     let matched_strings: Vec<String> =
-        match_finder.matches().flattened().matches.iter().map(|m| m.matched_text()).collect();
+        match_finder.matches(&db).flattened().matches.iter().map(|m| m.matched_text()).collect();
     if matched_strings != expected && !expected.is_empty() {
         print_match_debug_info(&match_finder, position.file_id, expected[0]);
     }
@@ -138,7 +138,7 @@ fn assert_no_match(pattern: &str, code: &str) {
     let (db, position, selections) = single_file(code);
     let mut match_finder = MatchFinder::in_context(&db, position, selections);
     match_finder.add_search_pattern(pattern.parse().unwrap()).unwrap();
-    let matches = match_finder.matches().flattened().matches;
+    let matches = match_finder.matches(&db).flattened().matches;
     if !matches.is_empty() {
         print_match_debug_info(&match_finder, position.file_id, &matches[0].matched_text());
         panic!("Got {} matches when we expected none: {:#?}", matches.len(), matches);

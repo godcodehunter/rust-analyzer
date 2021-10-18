@@ -126,7 +126,7 @@ impl Def {
         };
 
         let search_scope = SearchScope::single_file(ctx.file_id());
-        def.usages(&ctx.sema).in_scope(search_scope).at_least_one()
+        def.usages(&ctx.sema).in_scope(search_scope).at_least_one(ctx.db())
     }
 }
 

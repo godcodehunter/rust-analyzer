@@ -43,7 +43,8 @@ pub struct HighlightRelatedConfig {
 //
 // Note: `?` and `->` do not currently trigger this behavior in the VSCode editor.
 pub(crate) fn highlight_related(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     config: HighlightRelatedConfig,
     position: FilePosition,
 ) -> Option<Vec<HighlightedRange>> {
@@ -68,13 +69,14 @@ pub(crate) fn highlight_related(
             highlight_break_points(token)
         }
         T![break] | T![loop] | T![while] if config.break_points => highlight_break_points(token),
-        _ if config.references => highlight_references(sema, &syntax, position),
+        _ if config.references => highlight_references(db, sema, &syntax, position),
         _ => None,
     }
 }
 
 fn highlight_references(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     syntax: &SyntaxNode,
     FilePosition { offset, file_id }: FilePosition,
 ) -> Option<Vec<HighlightedRange>> {
@@ -85,7 +87,7 @@ fn highlight_references(
             d.usages(sema)
                 .set_scope(Some(SearchScope::single_file(file_id)))
                 .include_self_refs()
-                .all()
+                .all(db)
                 .references
                 .remove(&file_id)
         })
@@ -98,9 +100,9 @@ fn highlight_references(
     let declarations = defs.iter().flat_map(|def| {
         match def {
             &Definition::ModuleDef(hir::ModuleDef::Module(module)) => {
-                Some(NavigationTarget::from_module_to_decl(sema.db, module))
+                Some(NavigationTarget::from_module_to_decl(db, module))
             }
-            def => def.try_to_nav(sema.db),
+            def => def.try_to_nav(db),
         }
         .filter(|decl| decl.file_id == file_id)
         .and_then(|decl| {
@@ -123,11 +125,11 @@ fn highlight_references(
 }
 
 fn highlight_exit_points(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     token: SyntaxToken,
 ) -> Option<Vec<HighlightedRange>> {
     fn hl(
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
         body: Option<ast::Expr>,
     ) -> Option<Vec<HighlightedRange>> {
         let mut highlights = Vec::new();
@@ -294,7 +296,7 @@ fn cover_range(r0: Option<TextRange>, r1: Option<TextRange>) -> Option<TextRange
 }
 
 fn find_defs(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     syntax: &SyntaxNode,
     offset: TextSize,
 ) -> FxHashSet<Definition> {

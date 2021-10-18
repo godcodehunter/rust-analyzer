@@ -1,8 +1,5 @@
 //! Look up accessible paths for items.
-use hir::{
-    AsAssocItem, AssocItem, AssocItemContainer, Crate, ItemInNs, MacroDef, ModPath, Module,
-    ModuleDef, PathResolution, PrefixKind, ScopeDef, Semantics, Type,
-};
+use hir::{AsAssocItem, AssocItem, AssocItemContainer, Crate, ItemInNs, MacroDef, ModPath, Module, ModuleDef, PathResolution, PrefixKind, ScopeDef, Semantics, Type, db::{DefDatabase, HirDatabase}};
 use itertools::Itertools;
 use rustc_hash::FxHashSet;
 use syntax::{
@@ -94,7 +91,7 @@ pub struct ImportAssets {
 impl ImportAssets {
     pub fn for_method_call(
         method_call: &ast::MethodCallExpr,
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
     ) -> Option<Self> {
         let candidate_node = method_call.syntax().clone();
         Some(Self {
@@ -106,7 +103,7 @@ impl ImportAssets {
 
     pub fn for_exact_path(
         fully_qualified_path: &ast::Path,
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
     ) -> Option<Self> {
         let candidate_node = fully_qualified_path.syntax().clone();
         if candidate_node.ancestors().find_map(ast::Use::cast).is_some() {
@@ -119,7 +116,7 @@ impl ImportAssets {
         })
     }
 
-    pub fn for_ident_pat(pat: &ast::IdentPat, sema: &Semantics<RootDatabase>) -> Option<Self> {
+    pub fn for_ident_pat(pat: &ast::IdentPat, sema: &Semantics) -> Option<Self> {
         if !pat.is_simple_ident() {
             return None;
         }
@@ -136,7 +133,7 @@ impl ImportAssets {
         module_with_candidate: Module,
         qualifier: Option<ast::Path>,
         fuzzy_name: String,
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
         candidate_node: SyntaxNode,
     ) -> Option<Self> {
         Some(Self {
@@ -200,22 +197,24 @@ impl ImportAssets {
 
     pub fn search_for_imports(
         &self,
-        sema: &Semantics<RootDatabase>,
+        db: &RootDatabase,
+        sema: &Semantics,
         prefix_kind: PrefixKind,
     ) -> Vec<LocatedImport> {
         let _p = profile::span("import_assets::search_for_imports");
-        self.search_for(sema, Some(prefix_kind))
+        self.search_for(db, sema, Some(prefix_kind))
     }
 
     /// This may return non-absolute paths if a part of the returned path is already imported into scope.
-    pub fn search_for_relative_paths(&self, sema: &Semantics<RootDatabase>) -> Vec<LocatedImport> {
+    pub fn search_for_relative_paths(&self, db: &RootDatabase, sema: &Semantics) -> Vec<LocatedImport> {
         let _p = profile::span("import_assets::search_for_relative_paths");
-        self.search_for(sema, None)
+        self.search_for(db, sema, None)
     }
 
     fn search_for(
         &self,
-        sema: &Semantics<RootDatabase>,
+        db: &RootDatabase,
+        sema: &Semantics,
         prefixed: Option<PrefixKind>,
     ) -> Vec<LocatedImport> {
         let _p = profile::span("import_assets::search_for");
@@ -224,7 +223,7 @@ impl ImportAssets {
         let current_crate = self.module_with_candidate.krate();
         let mod_path = |item| {
             get_mod_path(
-                sema.db,
+                sema.db.upcast(),
                 item_for_path_search(sema.db, item)?,
                 &self.module_with_candidate,
                 prefixed,
@@ -233,13 +232,13 @@ impl ImportAssets {
 
         match &self.import_candidate {
             ImportCandidate::Path(path_candidate) => {
-                path_applicable_imports(sema, current_crate, path_candidate, mod_path)
+                path_applicable_imports(db, sema, current_crate, path_candidate, mod_path)
             }
             ImportCandidate::TraitAssocItem(trait_candidate) => {
-                trait_applicable_items(sema, current_crate, trait_candidate, true, mod_path)
+                trait_applicable_items(db, sema, current_crate, trait_candidate, true, mod_path)
             }
             ImportCandidate::TraitMethod(trait_candidate) => {
-                trait_applicable_items(sema, current_crate, trait_candidate, false, mod_path)
+                trait_applicable_items(db, sema, current_crate, trait_candidate, false, mod_path)
             }
         }
         .into_iter()
@@ -249,7 +248,7 @@ impl ImportAssets {
         .collect()
     }
 
-    fn scope_definitions(&self, sema: &Semantics<RootDatabase>) -> FxHashSet<ScopeDef> {
+    fn scope_definitions(&self, sema: &Semantics) -> FxHashSet<ScopeDef> {
         let _p = profile::span("import_assets::scope_definitions");
         let mut scope_definitions = FxHashSet::default();
         sema.scope(&self.candidate_node).process_all_names(&mut |_, scope_def| {
@@ -260,7 +259,8 @@ impl ImportAssets {
 }
 
 fn path_applicable_imports(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     current_crate: Crate,
     path_candidate: &PathImportCandidate,
     mod_path: impl Fn(ItemInNs) -> Option<ModPath> + Copy,
@@ -270,6 +270,7 @@ fn path_applicable_imports(
     match &path_candidate.qualifier {
         None => {
             items_locator::items_with_name(
+                db,
                 sema,
                 current_crate,
                 path_candidate.name.clone(),
@@ -295,6 +296,7 @@ fn path_applicable_imports(
                 path_to_string_stripping_turbo_fish(&first_segment_unresolved.full_qualifier);
             let unresolved_first_segment = first_segment_unresolved.fist_segment.text();
             items_locator::items_with_name(
+                db,
                 sema,
                 current_crate,
                 path_candidate.name.clone(),
@@ -316,7 +318,7 @@ fn path_applicable_imports(
 }
 
 fn import_for_item(
-    db: &RootDatabase,
+    db: &dyn HirDatabase,
     mod_path: impl Fn(ItemInNs) -> Option<ModPath>,
     unresolved_first_segment: &str,
     unresolved_qualifier: &str,
@@ -372,7 +374,7 @@ fn import_for_item(
     })
 }
 
-fn item_for_path_search(db: &RootDatabase, item: ItemInNs) -> Option<ItemInNs> {
+fn item_for_path_search(db: &dyn HirDatabase, item: ItemInNs) -> Option<ItemInNs> {
     Some(match item {
         ItemInNs::Types(_) | ItemInNs::Values(_) => match item_as_assoc(db, item) {
             Some(assoc_item) => match assoc_item.container(db) {
@@ -388,7 +390,7 @@ fn item_for_path_search(db: &RootDatabase, item: ItemInNs) -> Option<ItemInNs> {
 }
 
 fn find_import_for_segment(
-    db: &RootDatabase,
+    db: &dyn HirDatabase,
     original_item: ItemInNs,
     unresolved_first_segment: &str,
 ) -> Option<ItemInNs> {
@@ -406,7 +408,7 @@ fn find_import_for_segment(
 }
 
 fn module_with_segment_name(
-    db: &RootDatabase,
+    db: &dyn HirDatabase,
     segment_name: &str,
     candidate: ItemInNs,
 ) -> Option<Module> {
@@ -427,7 +429,8 @@ fn module_with_segment_name(
 }
 
 fn trait_applicable_items(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     current_crate: Crate,
     trait_candidate: &TraitImportCandidate,
     trait_assoc_item: bool,
@@ -435,12 +438,11 @@ fn trait_applicable_items(
 ) -> FxHashSet<LocatedImport> {
     let _p = profile::span("import_assets::trait_applicable_items");
 
-    let db = sema.db;
-
     let related_dyn_traits =
         trait_candidate.receiver_ty.applicable_inherent_traits(db).collect::<FxHashSet<_>>();
     let mut required_assoc_items = FxHashSet::default();
     let trait_candidates = items_locator::items_with_name(
+        db,
         sema,
         current_crate,
         trait_candidate.assoc_item_name.clone(),
@@ -523,7 +525,7 @@ fn assoc_to_item(assoc: AssocItem) -> ItemInNs {
 }
 
 fn get_mod_path(
-    db: &RootDatabase,
+    db: &dyn DefDatabase,
     item_to_search: ItemInNs,
     module_with_candidate: &Module,
     prefixed: Option<PrefixKind>,
@@ -537,7 +539,7 @@ fn get_mod_path(
 
 impl ImportCandidate {
     fn for_method_call(
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
         method_call: &ast::MethodCallExpr,
     ) -> Option<Self> {
         match sema.resolve_method_call(method_call) {
@@ -549,7 +551,7 @@ impl ImportCandidate {
         }
     }
 
-    fn for_regular_path(sema: &Semantics<RootDatabase>, path: &ast::Path) -> Option<Self> {
+    fn for_regular_path(sema: &Semantics, path: &ast::Path) -> Option<Self> {
         if sema.resolve_path(path).is_some() {
             return None;
         }
@@ -560,7 +562,7 @@ impl ImportCandidate {
         )
     }
 
-    fn for_name(sema: &Semantics<RootDatabase>, name: &ast::Name) -> Option<Self> {
+    fn for_name(sema: &Semantics, name: &ast::Name) -> Option<Self> {
         if sema
             .scope(name.syntax())
             .speculative_resolve(&ast::make::ext::ident_path(&name.text()))
@@ -577,14 +579,14 @@ impl ImportCandidate {
     fn for_fuzzy_path(
         qualifier: Option<ast::Path>,
         fuzzy_name: String,
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
     ) -> Option<Self> {
         path_import_candidate(sema, qualifier, NameToImport::Fuzzy(fuzzy_name))
     }
 }
 
 fn path_import_candidate(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     qualifier: Option<ast::Path>,
     name: NameToImport,
 ) -> Option<ImportCandidate> {
@@ -619,6 +621,6 @@ fn path_import_candidate(
     })
 }
 
-fn item_as_assoc(db: &RootDatabase, item: ItemInNs) -> Option<AssocItem> {
+fn item_as_assoc(db: &dyn HirDatabase, item: ItemInNs) -> Option<AssocItem> {
     item.as_module_def().and_then(|module_def| module_def.as_assoc_item(db))
 }

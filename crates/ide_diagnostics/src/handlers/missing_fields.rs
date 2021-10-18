@@ -1,5 +1,5 @@
 use either::Either;
-use hir::{db::AstDatabase, InFile};
+use hir::InFile;
 use ide_db::{assists::Assist, source_change::SourceChange};
 use rustc_hash::FxHashMap;
 use stdx::format_to;
@@ -97,7 +97,7 @@ fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::MissingFields) -> Option<Vec<Ass
     Some(vec![fix(
         "fill_missing_fields",
         "Fill struct fields",
-        SourceChange::from_text_edit(d.file.original_file(ctx.sema.db), edit),
+        SourceChange::from_text_edit(d.file.original_file(ctx.sema.db.upcast()), edit),
         ctx.sema.original_range(field_list_parent.syntax()).range,
     )])
 }

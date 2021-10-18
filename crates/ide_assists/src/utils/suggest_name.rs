@@ -1,7 +1,6 @@
 //! This module contains functions to suggest names for expressions, functions and other items
 
-use hir::Semantics;
-use ide_db::RootDatabase;
+use hir::{Semantics, db::HirDatabase};
 use itertools::Itertools;
 use stdx::to_lower_snake_case;
 use syntax::{
@@ -84,7 +83,7 @@ pub(crate) fn for_generic_parameter(ty: &ast::ImplTraitType) -> SmolStr {
 ///
 /// Currently it sticks to the first name found.
 // FIXME: Microoptimize and return a `SmolStr` here.
-pub(crate) fn for_variable(expr: &ast::Expr, sema: &Semantics<'_, RootDatabase>) -> String {
+pub(crate) fn for_variable(expr: &ast::Expr, sema: &Semantics) -> String {
     // `from_param` does not benifit from stripping
     // it need the largest context possible
     // so we check firstmost
@@ -189,7 +188,7 @@ fn from_method_call(expr: &ast::Expr) -> Option<String> {
     normalize(name)
 }
 
-fn from_param(expr: &ast::Expr, sema: &Semantics<'_, RootDatabase>) -> Option<String> {
+fn from_param(expr: &ast::Expr, sema: &Semantics) -> Option<String> {
     let arg_list = expr.syntax().parent().and_then(ast::ArgList::cast)?;
     let args_parent = arg_list.syntax().parent()?;
     let func = match_ast! {
@@ -223,14 +222,14 @@ fn var_name_from_pat(pat: &ast::Pat) -> Option<ast::Name> {
     }
 }
 
-fn from_type(expr: &ast::Expr, sema: &Semantics<'_, RootDatabase>) -> Option<String> {
+fn from_type(expr: &ast::Expr, sema: &Semantics) -> Option<String> {
     let ty = sema.type_of_expr(expr)?.adjusted();
     let ty = ty.remove_ref().unwrap_or(ty);
 
     name_of_type(&ty, sema.db)
 }
 
-fn name_of_type(ty: &hir::Type, db: &RootDatabase) -> Option<String> {
+fn name_of_type(ty: &hir::Type, db: &dyn HirDatabase) -> Option<String> {
     let name = if let Some(adt) = ty.as_adt() {
         let name = adt.name(db).to_string();
 
@@ -255,7 +254,7 @@ fn name_of_type(ty: &hir::Type, db: &RootDatabase) -> Option<String> {
     normalize(&name)
 }
 
-fn trait_name(trait_: &hir::Trait, db: &RootDatabase) -> Option<String> {
+fn trait_name(trait_: &hir::Trait, db: &dyn HirDatabase) -> Option<String> {
     let name = trait_.name(db).to_string();
     if USELESS_TRAITS.contains(&name.as_str()) {
         return None;
@@ -265,7 +264,7 @@ fn trait_name(trait_: &hir::Trait, db: &RootDatabase) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use ide_db::base_db::{fixture::WithFixture, FileRange};
+    use ide_db::{RootDatabase, base_db::{fixture::WithFixture, FileRange}};
 
     use super::*;
 

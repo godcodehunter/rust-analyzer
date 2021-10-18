@@ -65,23 +65,23 @@ macro_rules! _bail {
 pub use _bail as bail;
 
 impl Definition {
-    pub fn rename(&self, sema: &Semantics<RootDatabase>, new_name: &str) -> Result<SourceChange> {
+    pub fn rename(&self, db: &RootDatabase, sema: &Semantics, new_name: &str) -> Result<SourceChange> {
         match *self {
             Definition::ModuleDef(hir::ModuleDef::Module(module)) => {
-                rename_mod(sema, module, new_name)
+                rename_mod(db, sema, module, new_name)
             }
             Definition::ModuleDef(hir::ModuleDef::BuiltinType(_)) => {
                 bail!("Cannot rename builtin type")
             }
             Definition::SelfType(_) => bail!("Cannot rename `Self`"),
-            def => rename_reference(sema, def, new_name),
+            def => rename_reference(db, sema, def, new_name),
         }
     }
 
     /// Textual range of the identifier which will change when renaming this
     /// `Definition`. Note that some definitions, like buitin types, can't be
     /// renamed.
-    pub fn range_for_rename(self, sema: &Semantics<RootDatabase>) -> Option<FileRange> {
+    pub fn range_for_rename(self, sema: &Semantics) -> Option<FileRange> {
         let res = match self {
             Definition::Macro(mac) => {
                 let src = mac.source(sema.db)?;
@@ -89,14 +89,14 @@ impl Definition {
                     Either::Left(it) => it.name()?,
                     Either::Right(it) => it.name()?,
                 };
-                src.with_value(name.syntax()).original_file_range_opt(sema.db)
+                src.with_value(name.syntax()).original_file_range_opt(sema.db.upcast())
             }
             Definition::Field(field) => {
                 let src = field.source(sema.db)?;
                 match &src.value {
                     FieldSource::Named(record_field) => {
                         let name = record_field.name()?;
-                        src.with_value(name.syntax()).original_file_range_opt(sema.db)
+                        src.with_value(name.syntax()).original_file_range_opt(sema.db.upcast())
                     }
                     FieldSource::Pos(_) => None,
                 }
@@ -105,7 +105,7 @@ impl Definition {
                 hir::ModuleDef::Module(module) => {
                     let src = module.declaration_source(sema.db)?;
                     let name = src.value.name()?;
-                    src.with_value(name.syntax()).original_file_range_opt(sema.db)
+                    src.with_value(name.syntax()).original_file_range_opt(sema.db.upcast())
                 }
                 hir::ModuleDef::Function(it) => name_range(it, sema),
                 hir::ModuleDef::Adt(adt) => match adt {
@@ -127,7 +127,7 @@ impl Definition {
                     Either::Left(bind_pat) => bind_pat.name()?,
                     Either::Right(_) => return None,
                 };
-                src.with_value(name.syntax()).original_file_range_opt(sema.db)
+                src.with_value(name.syntax()).original_file_range_opt(sema.db.upcast())
             }
             Definition::GenericParam(generic_param) => match generic_param {
                 hir::GenericParam::TypeParam(type_param) => {
@@ -136,37 +136,38 @@ impl Definition {
                         Either::Left(type_param) => type_param.name()?,
                         Either::Right(_trait) => return None,
                     };
-                    src.with_value(name.syntax()).original_file_range_opt(sema.db)
+                    src.with_value(name.syntax()).original_file_range_opt(sema.db.upcast())
                 }
                 hir::GenericParam::LifetimeParam(lifetime_param) => {
                     let src = lifetime_param.source(sema.db)?;
                     let lifetime = src.value.lifetime()?;
-                    src.with_value(lifetime.syntax()).original_file_range_opt(sema.db)
+                    src.with_value(lifetime.syntax()).original_file_range_opt(sema.db.upcast())
                 }
                 hir::GenericParam::ConstParam(it) => name_range(it, sema),
             },
             Definition::Label(label) => {
                 let src = label.source(sema.db);
                 let lifetime = src.value.lifetime()?;
-                src.with_value(lifetime.syntax()).original_file_range_opt(sema.db)
+                src.with_value(lifetime.syntax()).original_file_range_opt(sema.db.upcast())
             }
         };
         return res;
 
-        fn name_range<D>(def: D, sema: &Semantics<RootDatabase>) -> Option<FileRange>
+        fn name_range<D>(def: D, sema: &Semantics) -> Option<FileRange>
         where
             D: HasSource,
             D::Ast: ast::HasName,
         {
             let src = def.source(sema.db)?;
             let name = src.value.name()?;
-            src.with_value(name.syntax()).original_file_range_opt(sema.db)
+            src.with_value(name.syntax()).original_file_range_opt(sema.db.upcast())
         }
     }
 }
 
 fn rename_mod(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     module: hir::Module,
     new_name: &str,
 ) -> Result<SourceChange> {
@@ -177,7 +178,7 @@ fn rename_mod(
     let mut source_change = SourceChange::default();
 
     let InFile { file_id, value: def_source } = module.definition_source(sema.db);
-    let file_id = file_id.original_file(sema.db);
+    let file_id = file_id.original_file(sema.db.upcast());
     if let ModuleSource::SourceFile(..) = def_source {
         // mod is defined in path/to/dir/mod.rs
         let path = if module.is_mod_rs(sema.db) {
@@ -191,7 +192,7 @@ fn rename_mod(
     }
 
     if let Some(InFile { file_id, value: decl_source }) = module.declaration_source(sema.db) {
-        let file_id = file_id.original_file(sema.db);
+        let file_id = file_id.original_file(sema.db.upcast());
         match decl_source.name() {
             Some(name) => source_change.insert_source_edit(
                 file_id,
@@ -201,7 +202,7 @@ fn rename_mod(
         }
     }
     let def = Definition::ModuleDef(hir::ModuleDef::Module(module));
-    let usages = def.usages(sema).all();
+    let usages = def.usages(sema).all(db);
     let ref_edits = usages.iter().map(|(&file_id, references)| {
         (file_id, source_edit_from_references(references, def, new_name))
     });
@@ -211,7 +212,8 @@ fn rename_mod(
 }
 
 fn rename_reference(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     mut def: Definition,
     new_name: &str,
 ) -> Result<SourceChange> {
@@ -269,7 +271,7 @@ fn rename_reference(
             .unwrap_or(def),
         _ => def,
     };
-    let usages = def.usages(sema).all();
+    let usages = def.usages(sema).all(db);
 
     if !usages.is_empty() && ident_kind == IdentifierKind::Underscore {
         cov_mark::hit!(rename_underscore_multiple);
@@ -426,7 +428,7 @@ fn source_edit_from_name_ref(
 }
 
 fn source_edit_from_def(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     def: Definition,
     new_name: &str,
 ) -> Result<(FileId, TextEdit)> {

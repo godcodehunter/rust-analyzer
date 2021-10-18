@@ -1,5 +1,5 @@
-use hir::{db::AstDatabase, HasSource, HirDisplay, Semantics};
-use ide_db::{base_db::FileId, source_change::SourceChange, RootDatabase};
+use hir::{HasSource, HirDisplay, Semantics};
+use ide_db::{base_db::FileId, source_change::SourceChange};
 use syntax::{
     ast::{self, edit::IndentLevel, make},
     AstNode,
@@ -24,13 +24,13 @@ fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::NoSuchField) -> Option<Vec<Assis
     let root = ctx.sema.db.parse_or_expand(d.field.file_id)?;
     missing_record_expr_field_fixes(
         &ctx.sema,
-        d.field.file_id.original_file(ctx.sema.db),
+        d.field.file_id.original_file(ctx.sema.db.upcast()),
         &d.field.value.to_node(&root),
     )
 }
 
 fn missing_record_expr_field_fixes(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     usage_file_id: FileId,
     record_expr_field: &ast::RecordExprField,
 ) -> Option<Vec<Assist>> {
@@ -60,7 +60,7 @@ fn missing_record_expr_field_fixes(
             record_field_list(fields)?
         }
     };
-    let def_file_id = def_file_id.original_file(sema.db);
+    let def_file_id = def_file_id.original_file(sema.db.upcast());
 
     let new_field_type = sema.type_of_expr(&record_expr_field.expr()?)?.adjusted();
     if new_field_type.is_unknown() {

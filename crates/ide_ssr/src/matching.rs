@@ -91,7 +91,7 @@ pub(crate) fn get_match(
     rule: &ResolvedRule,
     code: &SyntaxNode,
     restrict_range: &Option<FileRange>,
-    sema: &Semantics<ide_db::RootDatabase>,
+    sema: &Semantics,
 ) -> Result<Match, MatchFailed> {
     record_match_fails_reasons_scope(debug_active, || {
         Matcher::try_match(rule, code, restrict_range, sema)
@@ -100,7 +100,7 @@ pub(crate) fn get_match(
 
 /// Checks if our search pattern matches a particular node of the AST.
 struct Matcher<'db, 'sema> {
-    sema: &'sema Semantics<'db, ide_db::RootDatabase>,
+    sema: &'sema Semantics<'db>,
     /// If any placeholders come from anywhere outside of this range, then the match will be
     /// rejected.
     restrict_range: Option<FileRange>,
@@ -122,7 +122,7 @@ impl<'db, 'sema> Matcher<'db, 'sema> {
         rule: &ResolvedRule,
         code: &SyntaxNode,
         restrict_range: &Option<FileRange>,
-        sema: &'sema Semantics<'db, ide_db::RootDatabase>,
+        sema: &'sema Semantics<'db>,
     ) -> Result<Match, MatchFailed> {
         let match_state = Matcher { sema, restrict_range: *restrict_range, rule };
         // First pass at matching, where we check that node types and idents match.
@@ -642,7 +642,7 @@ impl Match {
     fn render_template_paths(
         &mut self,
         template: &ResolvedPattern,
-        sema: &Semantics<ide_db::RootDatabase>,
+        sema: &Semantics,
     ) -> Result<(), MatchFailed> {
         let module = sema
             .scope(&self.matched_node)
@@ -650,7 +650,7 @@ impl Match {
             .ok_or_else(|| match_error!("Matched node isn't in a module"))?;
         for (path, resolved_path) in &template.resolved_paths {
             if let hir::PathResolution::Def(module_def) = resolved_path.resolution {
-                let mod_path = module.find_use_path(sema.db, module_def).ok_or_else(|| {
+                let mod_path = module.find_use_path(sema.db.upcast(), module_def).ok_or_else(|| {
                     match_error!("Failed to render template path `{}` at match location")
                 })?;
                 self.rendered_template_paths.insert(path.clone(), mod_path);
@@ -790,12 +790,12 @@ mod tests {
         let (db, position, selections) = crate::tests::single_file(input);
         let mut match_finder = MatchFinder::in_context(&db, position, selections);
         match_finder.add_rule(rule).unwrap();
-        let matches = match_finder.matches();
+        let matches = match_finder.matches(&db);
         assert_eq!(matches.matches.len(), 1);
         assert_eq!(matches.matches[0].matched_node.text(), "foo(1+2)");
         assert_eq!(matches.matches[0].placeholder_values.len(), 1);
 
-        let edits = match_finder.edits();
+        let edits = match_finder.edits(&db);
         assert_eq!(edits.len(), 1);
         let edit = &edits[&position.file_id];
         let mut after = input.to_string();

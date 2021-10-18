@@ -1,4 +1,4 @@
-use hir::{db::AstDatabase, InFile};
+use hir::InFile;
 use syntax::{AstNode, SyntaxNodePtr};
 
 use crate::{Diagnostic, DiagnosticsContext};

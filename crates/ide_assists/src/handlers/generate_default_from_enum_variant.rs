@@ -1,4 +1,4 @@
-use ide_db::{helpers::FamousDefs, RootDatabase};
+use ide_db::{helpers::FamousDefs};
 use syntax::ast::{self, AstNode, HasName};
 
 use crate::{AssistContext, AssistId, AssistKind, Assists};
@@ -68,7 +68,7 @@ impl Default for {0} {{
 }
 
 fn existing_default_impl(
-    sema: &'_ hir::Semantics<'_, RootDatabase>,
+    sema: &'_ hir::Semantics,
     variant: &ast::Variant,
 ) -> Option<()> {
     let variant = sema.to_def(variant)?;

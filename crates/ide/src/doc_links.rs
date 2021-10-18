@@ -199,7 +199,7 @@ pub(crate) fn resolve_doc_path_for_def(
 }
 
 pub(crate) fn doc_attributes(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     node: &SyntaxNode,
 ) -> Option<(hir::AttrsWithOwner, Definition)> {
     match_ast! {
@@ -244,7 +244,7 @@ pub(crate) fn token_as_doc_comment(doc_token: &SyntaxToken) -> Option<DocComment
 impl DocCommentToken {
     pub(crate) fn get_definition_with_descend_at<T>(
         self,
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
         offset: TextSize,
         // Definition, CommentOwner, range of intra doc link in original file
         mut cb: impl FnMut(Definition, SyntaxNode, TextRange) -> Option<T>,
@@ -266,7 +266,7 @@ impl DocCommentToken {
             let abs_in_expansion_offset = token_start + relative_comment_offset + descended_prefix_len;
 
             let (attributes, def) = doc_attributes(sema, &node)?;
-            let (docs, doc_mapping) = attributes.docs_with_rangemap(sema.db)?;
+            let (docs, doc_mapping) = attributes.docs_with_rangemap(sema.db.upcast())?;
             let (in_expansion_range, link, ns) =
                 extract_definitions_from_docs(&docs).into_iter().find_map(|(range, link, ns)| {
                     let mapped = doc_mapping.map(range)?;
@@ -832,7 +832,7 @@ pub struct $0Foo;
         let (analysis, position) = fixture::position(ra_fixture);
         let sema = &Semantics::new(&*analysis.db);
         let (cursor_def, docs) = def_under_cursor(sema, &position);
-        let res = rewrite_links(sema.db, docs.as_str(), cursor_def);
+        let res = rewrite_links(&analysis.db, docs.as_str(), cursor_def);
         expect.assert_eq(&res)
     }
 
@@ -849,7 +849,7 @@ pub struct $0Foo;
             .map(|(_, link, ns)| {
                 let def = resolve_doc_path_for_def(sema.db, cursor_def, &link, ns)
                     .unwrap_or_else(|| panic!("Failed to resolve {}", link));
-                let nav_target = def.try_to_nav(sema.db).unwrap();
+                let nav_target = def.try_to_nav(&analysis.db).unwrap();
                 let range = FileRange {
                     file_id: nav_target.file_id,
                     range: nav_target.focus_or_full_range(),
@@ -862,7 +862,7 @@ pub struct $0Foo;
     }
 
     fn def_under_cursor(
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
         position: &FilePosition,
     ) -> (Definition, hir::Documentation) {
         let (docs, def) = sema
@@ -880,7 +880,7 @@ pub struct $0Foo;
     }
 
     fn node_to_def(
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
         node: &SyntaxNode,
     ) -> Option<Option<(Option<hir::Documentation>, Definition)>> {
         Some(match_ast! {

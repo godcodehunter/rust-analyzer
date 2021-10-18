@@ -1,7 +1,7 @@
 use std::iter::{self, successors};
 
 use either::Either;
-use ide_db::{defs::NameClass, ty_filter::TryEnum, RootDatabase};
+use ide_db::{defs::NameClass, ty_filter::TryEnum};
 use syntax::{
     ast::{
         self,
@@ -232,7 +232,7 @@ pub(crate) fn replace_match_with_if_let(acc: &mut Assists, ctx: &AssistContext) 
 
 /// Pick the pattern for the if let condition and return the expressions for the `then` body and `else` body in that order.
 fn pick_pattern_and_expr_order(
-    sema: &hir::Semantics<RootDatabase>,
+    sema: &hir::Semantics,
     pat: ast::Pat,
     pat2: ast::Pat,
     expr: ast::Expr,
@@ -264,7 +264,7 @@ fn is_empty_expr(expr: &ast::Expr) -> bool {
     }
 }
 
-fn binds_name(sema: &hir::Semantics<RootDatabase>, pat: &ast::Pat) -> bool {
+fn binds_name(sema: &hir::Semantics, pat: &ast::Pat) -> bool {
     let binds_name_v = |pat| binds_name(sema, &pat);
     match pat {
         ast::Pat::IdentPat(pat) => !matches!(
@@ -286,7 +286,7 @@ fn binds_name(sema: &hir::Semantics<RootDatabase>, pat: &ast::Pat) -> bool {
     }
 }
 
-fn is_sad_pat(sema: &hir::Semantics<RootDatabase>, pat: &ast::Pat) -> bool {
+fn is_sad_pat(sema: &hir::Semantics, pat: &ast::Pat) -> bool {
     sema.type_of_pat(pat)
         .and_then(|ty| TryEnum::from_ty(sema, &ty.adjusted()))
         .map_or(false, |it| does_pat_match_variant(pat, &it.sad_pattern()))

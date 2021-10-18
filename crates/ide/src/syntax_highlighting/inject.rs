@@ -13,12 +13,12 @@ use syntax::{
 use crate::{
     doc_links::{doc_attributes, extract_definitions_from_docs, resolve_doc_path_for_def},
     syntax_highlighting::{highlights::Highlights, injector::Injector},
-    Analysis, HlMod, HlRange, HlTag, RootDatabase,
+    Analysis, HlMod, HlRange, HlTag,
 };
 
 pub(super) fn ra_fixture(
     hl: &mut Highlights,
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     literal: ast::String,
     expanded: SyntaxToken,
 ) -> Option<()> {
@@ -81,7 +81,7 @@ const RUSTDOC_FENCE: &'static str = "```";
 /// Injection of syntax highlighting of doctests.
 pub(super) fn doc_comment(
     hl: &mut Highlights,
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     node: InFile<&SyntaxNode>,
 ) {
     let (attributes, def) = match doc_attributes(sema, node.value) {
@@ -92,7 +92,7 @@ pub(super) fn doc_comment(
     let mut inj = Injector::default();
     inj.add_unmapped("fn doctest() {\n");
 
-    let attrs_source_map = attributes.source_map(sema.db);
+    let attrs_source_map = attributes.source_map(sema.db.upcast());
 
     let mut is_codeblock = false;
     let mut is_doctest = false;
@@ -102,7 +102,7 @@ pub(super) fn doc_comment(
     let mut new_comments = Vec::new();
     let mut string;
 
-    if let Some((docs, doc_mapping)) = attributes.docs_with_rangemap(sema.db) {
+    if let Some((docs, doc_mapping)) = attributes.docs_with_rangemap(sema.db.upcast()) {
         extract_definitions_from_docs(&docs)
             .into_iter()
             .filter_map(|(range, link, ns)| {

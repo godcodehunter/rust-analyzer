@@ -85,7 +85,7 @@ pub use crate::from_comment::ssr_from_comment;
 pub use crate::matching::Match;
 use crate::matching::MatchFailureReason;
 use hir::Semantics;
-use ide_db::base_db::{FileId, FilePosition, FileRange};
+use ide_db::{RootDatabase, base_db::{FileId, FilePosition, FileRange}};
 use resolving::ResolvedRule;
 use rustc_hash::FxHashMap;
 use syntax::{ast, AstNode, SyntaxNode, TextRange};
@@ -114,7 +114,7 @@ pub struct SsrMatches {
 /// Searches a crate for pattern matches and possibly replaces them with something else.
 pub struct MatchFinder<'db> {
     /// Our source of information about the user's code.
-    sema: Semantics<'db, ide_db::RootDatabase>,
+    sema: Semantics<'db>,
     rules: Vec<ResolvedRule>,
     resolution_scope: resolving::ResolutionScope<'db>,
     restrict_ranges: Vec<FileRange>,
@@ -166,10 +166,9 @@ impl<'db> MatchFinder<'db> {
     }
 
     /// Finds matches for all added rules and returns edits for all found matches.
-    pub fn edits(&self) -> FxHashMap<FileId, TextEdit> {
-        use ide_db::base_db::SourceDatabaseExt;
+    pub fn edits(&self, db: &RootDatabase) -> FxHashMap<FileId, TextEdit> {
         let mut matches_by_file = FxHashMap::default();
-        for m in self.matches().matches {
+        for m in self.matches(db).matches {
             matches_by_file
                 .entry(m.range.file_id)
                 .or_insert_with(SsrMatches::default)
@@ -205,11 +204,11 @@ impl<'db> MatchFinder<'db> {
     }
 
     /// Returns matches for all added rules.
-    pub fn matches(&self) -> SsrMatches {
+    pub fn matches(&self, db: &RootDatabase) -> SsrMatches {
         let mut matches = Vec::new();
         let mut usage_cache = search::UsageCache::default();
         for rule in &self.rules {
-            self.find_matches_for_rule(rule, &mut usage_cache, &mut matches);
+            self.find_matches_for_rule(db, rule, &mut usage_cache, &mut matches);
         }
         nester::nest_and_remove_collisions(matches, &self.sema)
     }
@@ -218,7 +217,6 @@ impl<'db> MatchFinder<'db> {
     /// them, while recording reasons why they don't match. This API is useful for command
     /// line-based debugging where providing a range is difficult.
     pub fn debug_where_text_equal(&self, file_id: FileId, snippet: &str) -> Vec<MatchDebugInfo> {
-        use ide_db::base_db::SourceDatabaseExt;
         let file = self.sema.parse(file_id);
         let mut res = Vec::new();
         let file_text = self.sema.db.file_text(file_id);

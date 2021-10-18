@@ -28,7 +28,8 @@ use crate::{
 };
 
 pub(super) fn type_info(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     config: &HoverConfig,
     expr_or_pat: &Either<ast::Expr, ast::Pat>,
 ) -> Option<HoverResult> {
@@ -44,10 +45,10 @@ pub(super) fn type_info(
             targets.push(item);
         }
     };
-    walk_and_push_ty(sema.db, &original, &mut push_new_def);
+    walk_and_push_ty(db, &original, &mut push_new_def);
 
     res.markup = if let Some(adjusted_ty) = adjusted {
-        walk_and_push_ty(sema.db, &adjusted_ty, &mut push_new_def);
+        walk_and_push_ty(db, &adjusted_ty, &mut push_new_def);
         let original = original.display(sema.db).to_string();
         let adjusted = adjusted_ty.display(sema.db).to_string();
         let static_text_diff_len = "Coerced to: ".len() - "Type: ".len();
@@ -68,12 +69,13 @@ pub(super) fn type_info(
             original.display(sema.db).to_string().into()
         }
     };
-    res.actions.push(HoverAction::goto_type_from_targets(sema.db, targets));
+    res.actions.push(HoverAction::goto_type_from_targets(db, targets));
     Some(res)
 }
 
 pub(super) fn try_expr(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     config: &HoverConfig,
     try_expr: &ast::TryExpr,
 ) -> Option<HoverResult> {
@@ -136,9 +138,9 @@ pub(super) fn try_expr(
             targets.push(item);
         }
     };
-    walk_and_push_ty(sema.db, &inner_ty, &mut push_new_def);
-    walk_and_push_ty(sema.db, &body_ty, &mut push_new_def);
-    res.actions.push(HoverAction::goto_type_from_targets(sema.db, targets));
+    walk_and_push_ty(db, &inner_ty, &mut push_new_def);
+    walk_and_push_ty(db, &body_ty, &mut push_new_def);
+    res.actions.push(HoverAction::goto_type_from_targets(db, targets));
 
     let inner_ty = inner_ty.display(sema.db).to_string();
     let body_ty = body_ty.display(sema.db).to_string();
@@ -164,7 +166,8 @@ pub(super) fn try_expr(
 }
 
 pub(super) fn deref_expr(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     config: &HoverConfig,
     deref_expr: &ast::PrefixExpr,
 ) -> Option<HoverResult> {
@@ -179,11 +182,11 @@ pub(super) fn deref_expr(
             targets.push(item);
         }
     };
-    walk_and_push_ty(sema.db, &inner_ty, &mut push_new_def);
-    walk_and_push_ty(sema.db, &original, &mut push_new_def);
+    walk_and_push_ty(db, &inner_ty, &mut push_new_def);
+    walk_and_push_ty(db, &original, &mut push_new_def);
 
     res.markup = if let Some(adjusted_ty) = adjusted {
-        walk_and_push_ty(sema.db, &adjusted_ty, &mut push_new_def);
+        walk_and_push_ty(db, &adjusted_ty, &mut push_new_def);
         let original = original.display(sema.db).to_string();
         let adjusted = adjusted_ty.display(sema.db).to_string();
         let inner = inner_ty.display(sema.db).to_string();
@@ -222,13 +225,14 @@ pub(super) fn deref_expr(
         )
         .into()
     };
-    res.actions.push(HoverAction::goto_type_from_targets(sema.db, targets));
+    res.actions.push(HoverAction::goto_type_from_targets(db, targets));
 
     Some(res)
 }
 
 pub(super) fn keyword(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     config: &HoverConfig,
     token: &SyntaxToken,
 ) -> Option<HoverResult> {
@@ -241,7 +245,7 @@ pub(super) fn keyword(
     let doc_owner = find_std_module(&famous_defs, &keyword_mod)?;
     let docs = doc_owner.attrs(sema.db).docs()?;
     let markup = process_markup(
-        sema.db,
+        db,
         Definition::ModuleDef(doc_owner.into()),
         &markup(Some(docs.into()), token.text().into(), None)?,
         config,

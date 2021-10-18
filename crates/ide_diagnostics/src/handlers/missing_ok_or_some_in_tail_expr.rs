@@ -1,4 +1,4 @@
-use hir::{db::AstDatabase, TypeInfo};
+use hir::TypeInfo;
 use ide_db::{assists::Assist, helpers::for_each_tail_expr, source_change::SourceChange};
 use syntax::AstNode;
 use text_edit::TextEdit;
@@ -41,7 +41,7 @@ fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::MissingOkOrSomeInTailExpr) -> Op
         }
     });
     let source_change =
-        SourceChange::from_text_edit(d.expr.file_id.original_file(ctx.sema.db), builder.finish());
+        SourceChange::from_text_edit(d.expr.file_id.original_file(ctx.sema.db.upcast()), builder.finish());
     let name = if d.required == "Ok" { "Wrap with Ok" } else { "Wrap with Some" };
     Some(vec![fix("wrap_tail_expr", name, source_change, tail_expr_range)])
 }

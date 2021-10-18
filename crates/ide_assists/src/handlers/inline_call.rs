@@ -70,7 +70,7 @@ pub(crate) fn inline_into_callers(acc: &mut Assists, ctx: &AssistContext) -> Opt
     let params = get_fn_params(ctx.sema.db, function, &param_list)?;
 
     let usages = Definition::ModuleDef(hir::ModuleDef::Function(function)).usages(&ctx.sema);
-    if !usages.at_least_one() {
+    if !usages.at_least_one(ctx.db()) {
         return None;
     }
 
@@ -80,7 +80,7 @@ pub(crate) fn inline_into_callers(acc: &mut Assists, ctx: &AssistContext) -> Opt
             file_id: def_file,
             range: func_body.syntax().text_range(),
         }))
-        .at_least_one();
+        .at_least_one(ctx.db());
     if is_recursive_fn {
         cov_mark::hit!(inline_into_callers_recursive);
         return None;
@@ -91,7 +91,7 @@ pub(crate) fn inline_into_callers(acc: &mut Assists, ctx: &AssistContext) -> Opt
         "Inline into all callers",
         name.syntax().text_range(),
         |builder| {
-            let mut usages = usages.all();
+            let mut usages = usages.all(ctx.db());
             let current_file_usage = usages.references.remove(&def_file);
 
             let mut remove_def = true;
@@ -123,7 +123,7 @@ pub(crate) fn inline_into_callers(acc: &mut Assists, ctx: &AssistContext) -> Opt
                     .into_iter()
                     .map(|(call_info, mut_node)| {
                         let replacement =
-                            inline(&ctx.sema, def_file, function, &func_body, &params, &call_info);
+                            inline(ctx.db(), &ctx.sema, def_file, function, &func_body, &params, &call_info);
                         ted::replace(mut_node, replacement.syntax());
                     })
                     .count();
@@ -198,7 +198,7 @@ pub(crate) fn inline_call(acc: &mut Assists, ctx: &AssistContext) -> Option<()> 
     let fn_body = fn_source.value.body()?;
     let param_list = fn_source.value.param_list()?;
 
-    let FileRange { file_id, range } = fn_source.syntax().original_file_range(ctx.sema.db);
+    let FileRange { file_id, range } = fn_source.syntax().original_file_range(ctx.sema.db.upcast());
     if file_id == ctx.file_id() && range.contains(ctx.offset()) {
         cov_mark::hit!(inline_call_recursive);
         return None;
@@ -218,7 +218,7 @@ pub(crate) fn inline_call(acc: &mut Assists, ctx: &AssistContext) -> Option<()> 
         label,
         syntax.text_range(),
         |builder| {
-            let replacement = inline(&ctx.sema, file_id, function, &fn_body, &params, &call_info);
+            let replacement = inline(ctx.db(), &ctx.sema, file_id, function, &fn_body, &params, &call_info);
 
             builder.replace_ast(
                 match call_info.node {
@@ -294,7 +294,8 @@ fn get_fn_params(
 }
 
 fn inline(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     function_def_file_id: FileId,
     function: hir::Function,
     fn_body: &ast::BlockExpr,
@@ -305,7 +306,7 @@ fn inline(
     let usages_for_locals = |local| {
         Definition::Local(local)
             .usages(&sema)
-            .all()
+            .all(db)
             .references
             .remove(&function_def_file_id)
             .unwrap_or_default()

@@ -84,7 +84,7 @@ pub(crate) enum ParamKind {
 /// exactly is the cursor, syntax-wise.
 #[derive(Debug)]
 pub(crate) struct CompletionContext<'a> {
-    pub(super) sema: Semantics<'a, RootDatabase>,
+    pub(super) sema: Semantics<'a>,
     pub(super) scope: SemanticsScope<'a>,
     pub(super) db: &'a RootDatabase,
     pub(super) config: &'a CompletionConfig,
@@ -674,7 +674,7 @@ impl<'a> CompletionContext<'a> {
     }
 
     fn classify_lifetime(
-        sema: &Semantics<RootDatabase>,
+        sema: &Semantics,
         original_file: &SyntaxNode,
         lifetime: ast::Lifetime,
         offset: TextSize,
@@ -695,7 +695,7 @@ impl<'a> CompletionContext<'a> {
         })
     }
 
-    fn classify_name(_sema: &Semantics<RootDatabase>, name: ast::Name) -> Option<PatternContext> {
+    fn classify_name(_sema: &Semantics, name: ast::Name) -> Option<PatternContext> {
         let bind_pat = name.syntax().parent().and_then(ast::IdentPat::cast)?;
         let is_name_in_field_pat = bind_pat
             .syntax()
@@ -743,7 +743,7 @@ impl<'a> CompletionContext<'a> {
     }
 
     fn classify_name_ref(
-        _sema: &Semantics<RootDatabase>,
+        _sema: &Semantics,
         original_file: &SyntaxNode,
         name_ref: ast::NameRef,
     ) -> Option<PathCompletionContext> {

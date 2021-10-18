@@ -69,7 +69,7 @@ pub(crate) fn remove_unused_param(acc: &mut Assists, ctx: &AssistContext) -> Opt
         let local = ctx.sema.to_def(&ident_pat)?;
         Definition::Local(local)
     };
-    if param_def.usages(&ctx.sema).at_least_one() {
+    if param_def.usages(&ctx.sema).at_least_one(ctx.db()) {
         cov_mark::hit!(keep_used);
         return None;
     }
@@ -79,7 +79,7 @@ pub(crate) fn remove_unused_param(acc: &mut Assists, ctx: &AssistContext) -> Opt
         param.syntax().text_range(),
         |builder| {
             builder.delete(range_to_remove(param.syntax()));
-            for (file_id, references) in fn_def.usages(&ctx.sema).all() {
+            for (file_id, references) in fn_def.usages(&ctx.sema).all(ctx.db()) {
                 process_usages(ctx, builder, file_id, references, param_position, is_self_present);
             }
         },

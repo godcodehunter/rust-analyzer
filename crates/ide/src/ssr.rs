@@ -19,14 +19,14 @@ pub(crate) fn ssr_assists(
     let id = AssistId("ssr", AssistKind::RefactorRewrite);
 
     let (source_change_for_file, source_change_for_workspace) = if resolve.should_resolve(&id) {
-        let edits = match_finder.edits();
+        let edits = match_finder.edits(db);
 
         let source_change_for_file = {
             let text_edit_for_file = edits.get(&frange.file_id).cloned().unwrap_or_default();
             SourceChange::from_text_edit(frange.file_id, text_edit_for_file)
         };
 
-        let source_change_for_workspace = SourceChange::from(match_finder.edits());
+        let source_change_for_workspace = SourceChange::from(match_finder.edits(db));
 
         (Some(source_change_for_file), Some(source_change_for_workspace))
     } else {

@@ -11,11 +11,8 @@ use syntax::{
     match_ast, ted, AstToken, Direction, NodeOrToken, SyntaxNode, SyntaxToken,
 };
 
-use crate::{
-    helpers::merge_imports::{
-        common_prefix, eq_attrs, eq_visibility, try_merge_imports, use_tree_path_cmp, MergeBehavior,
-    },
-    RootDatabase,
+use crate::helpers::merge_imports::{
+    common_prefix, eq_attrs, eq_visibility, try_merge_imports, use_tree_path_cmp, MergeBehavior,
 };
 
 pub use hir::PrefixKind;
@@ -78,7 +75,7 @@ impl ImportScope {
     /// Determines the containing syntax node in which to insert a `use` statement affecting `position`.
     pub fn find_insert_use_container_with_macros(
         position: &SyntaxNode,
-        sema: &Semantics<'_, RootDatabase>,
+        sema: &Semantics,
     ) -> Option<Self> {
         sema.ancestors_with_macros(position.clone()).find_map(Self::from)
     }

@@ -193,6 +193,7 @@ pub fn resolve_completion_edits(
     // FIXME: lift out and make some tests here, this is ImportEdit::to_text_edit but changed to work with multiple edits
     imports.into_iter().for_each(|(full_import_path, imported_name)| {
         let items_with_name = items_locator::items_with_name(
+            db,
             &ctx.sema,
             current_crate,
             NameToImport::Exact(imported_name),

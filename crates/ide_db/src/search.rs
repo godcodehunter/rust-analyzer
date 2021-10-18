@@ -309,7 +309,7 @@ impl Definition {
         }
     }
 
-    pub fn usages<'a>(self, sema: &'a Semantics<RootDatabase>) -> FindUsages<'a> {
+    pub fn usages<'a>(self, sema: &'a Semantics) -> FindUsages<'a> {
         FindUsages {
             def: self,
             sema,
@@ -323,7 +323,7 @@ impl Definition {
 #[derive(Clone)]
 pub struct FindUsages<'a> {
     def: Definition,
-    sema: &'a Semantics<'a, RootDatabase>,
+    sema: &'a Semantics<'a>,
     scope: Option<SearchScope>,
     include_self_kw_refs: Option<hir::Type>,
     search_self_mod: bool,
@@ -347,30 +347,30 @@ impl<'a> FindUsages<'a> {
         self
     }
 
-    pub fn at_least_one(&self) -> bool {
+    pub fn at_least_one(&self, db: &RootDatabase) -> bool {
         let mut found = false;
-        self.search(&mut |_, _| {
+        self.search(db, &mut |_, _| {
             found = true;
             true
         });
         found
     }
 
-    pub fn all(self) -> UsageSearchResult {
+    pub fn all(self, db: &RootDatabase) -> UsageSearchResult {
         let mut res = UsageSearchResult::default();
-        self.search(&mut |file_id, reference| {
+        self.search(db, &mut |file_id, reference| {
             res.references.entry(file_id).or_default().push(reference);
             false
         });
         res
     }
 
-    fn search(&self, sink: &mut dyn FnMut(FileId, FileReference) -> bool) {
+    fn search(&self, db: &RootDatabase, sink: &mut dyn FnMut(FileId, FileReference) -> bool) {
         let _p = profile::span("FindUsages:search");
         let sema = self.sema;
 
         let search_scope = {
-            let base = self.def.search_scope(sema.db);
+            let base = self.def.search_scope(db);
             match &self.scope {
                 None => base,
                 Some(scope) => base.intersection(scope),
@@ -433,7 +433,7 @@ impl<'a> FindUsages<'a> {
         match self.def {
             Definition::ModuleDef(hir::ModuleDef::Module(module)) if self.search_self_mod => {
                 let src = module.definition_source(sema.db);
-                let file_id = src.file_id.original_file(sema.db);
+                let file_id = src.file_id.original_file(sema.db.upcast());
                 let (file_id, search_range) = match src.value {
                     ModuleSource::Module(m) => (file_id, Some(m.syntax().text_range())),
                     ModuleSource::BlockExpr(b) => (file_id, Some(b.syntax().text_range())),
@@ -636,7 +636,7 @@ impl<'a> FindUsages<'a> {
     }
 }
 
-fn def_to_ty(sema: &Semantics<RootDatabase>, def: &Definition) -> Option<hir::Type> {
+fn def_to_ty(sema: &Semantics, def: &Definition) -> Option<hir::Type> {
     match def {
         Definition::ModuleDef(def) => match def {
             ModuleDef::Adt(adt) => Some(adt.ty(sema.db)),

@@ -37,9 +37,9 @@ pub(crate) fn inline_local_variable(acc: &mut Assists, ctx: &AssistContext) -> O
     let range = ctx.selection_trimmed();
     let InlineData { let_stmt, delete_let, references, target } =
         if let Some(let_stmt) = ctx.find_node_at_offset::<ast::LetStmt>() {
-            inline_let(&ctx.sema, let_stmt, range, file_id)
+            inline_let(ctx.db(), &ctx.sema, let_stmt, range, file_id)
         } else if let Some(path_expr) = ctx.find_node_at_offset::<ast::PathExpr>() {
-            inline_usage(&ctx.sema, path_expr, range, file_id)
+            inline_usage(ctx.db(), &ctx.sema, path_expr, range, file_id)
         } else {
             None
         }?;
@@ -150,7 +150,8 @@ struct InlineData {
 }
 
 fn inline_let(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     let_stmt: ast::LetStmt,
     range: TextRange,
     file_id: FileId,
@@ -169,7 +170,7 @@ fn inline_let(
     }
 
     let local = sema.to_def(&bind_pat)?;
-    let UsageSearchResult { mut references } = Definition::Local(local).usages(sema).all();
+    let UsageSearchResult { mut references } = Definition::Local(local).usages(sema).all(db);
     match references.remove(&file_id) {
         Some(references) => Some(InlineData {
             let_stmt,
@@ -185,7 +186,8 @@ fn inline_let(
 }
 
 fn inline_usage(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     path_expr: ast::PathExpr,
     range: TextRange,
     file_id: FileId,
@@ -213,7 +215,7 @@ fn inline_usage(
 
     let let_stmt = ast::LetStmt::cast(bind_pat.syntax().parent()?)?;
 
-    let UsageSearchResult { mut references } = Definition::Local(local).usages(sema).all();
+    let UsageSearchResult { mut references } = Definition::Local(local).usages(sema).all(db);
     let mut references = references.remove(&file_id)?;
     let delete_let = references.len() == 1;
     references.retain(|fref| fref.name.as_name_ref() == Some(&name));

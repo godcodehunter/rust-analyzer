@@ -3,7 +3,6 @@ use ide_db::{
     assists::{AssistId, AssistKind},
     defs::Definition,
     helpers::node_ext::preorder_expr,
-    RootDatabase,
 };
 use stdx::to_upper_snake_case;
 use syntax::{
@@ -75,7 +74,7 @@ pub(crate) fn promote_local_to_const(acc: &mut Assists, ctx: &AssistContext) -> 
         target,
         |builder| {
             let name = to_upper_snake_case(&name.to_string());
-            let usages = Definition::Local(local).usages(&ctx.sema).all();
+            let usages = Definition::Local(local).usages(&ctx.sema).all(ctx.db());
             if let Some(usages) = usages.references.get(&ctx.file_id()) {
                 for usage in usages {
                     builder.replace(usage.range, &name);
@@ -95,7 +94,7 @@ pub(crate) fn promote_local_to_const(acc: &mut Assists, ctx: &AssistContext) -> 
     )
 }
 
-fn is_body_const(sema: &Semantics<RootDatabase>, expr: &ast::Expr) -> bool {
+fn is_body_const(sema: &Semantics, expr: &ast::Expr) -> bool {
     let mut is_const = true;
     preorder_expr(expr, &mut |ev| {
         let expr = match ev {

@@ -1,8 +1,7 @@
 //! Diagnostic emitted for files that aren't part of any crate.
 
-use hir::db::DefDatabase;
 use ide_db::{
-    base_db::{FileId, FileLoader, SourceDatabase, SourceDatabaseExt},
+    base_db::{FileId, SourceDatabase, SourceDatabaseExt},
     source_change::SourceChange,
     RootDatabase,
 };
@@ -18,7 +17,7 @@ use crate::{fix, Assist, Diagnostic, DiagnosticsContext, Severity};
 //
 // This diagnostic is shown for files that are not included in any crate, or files that are part of
 // crates rust-analyzer failed to discover. The file will not have IDE features available.
-pub(crate) fn unlinked_file(ctx: &DiagnosticsContext, acc: &mut Vec<Diagnostic>, file_id: FileId) {
+pub(crate) fn unlinked_file(ctx: &DiagnosticsContext, db: &RootDatabase, acc: &mut Vec<Diagnostic>, file_id: FileId) {
     // Limit diagnostic to the first few characters in the file. This matches how VS Code
     // renders it with the full span, but on other editors, and is less invasive.
     let range = ctx.sema.db.parse(file_id).syntax_node().text_range();
@@ -28,15 +27,15 @@ pub(crate) fn unlinked_file(ctx: &DiagnosticsContext, acc: &mut Vec<Diagnostic>,
     acc.push(
         Diagnostic::new("unlinked-file", "file not included in module tree", range)
             .severity(Severity::WeakWarning)
-            .with_fixes(fixes(ctx, file_id)),
+            .with_fixes(fixes(ctx, db, file_id)),
     );
 }
 
-fn fixes(ctx: &DiagnosticsContext, file_id: FileId) -> Option<Vec<Assist>> {
+fn fixes(ctx: &DiagnosticsContext, db: &RootDatabase, file_id: FileId) -> Option<Vec<Assist>> {
     // If there's an existing module that could add `mod` or `pub mod` items to include the unlinked file,
     // suggest that as a fix.
 
-    let source_root = ctx.sema.db.source_root(ctx.sema.db.file_source_root(file_id));
+    let source_root = db.source_root(db.file_source_root(file_id));
     let our_path = source_root.path_for_file(&file_id)?;
     let (mut module_name, _) = our_path.name_and_extension()?;
 
@@ -76,7 +75,7 @@ fn fixes(ctx: &DiagnosticsContext, file_id: FileId) -> Option<Vec<Assist>> {
                 }
 
                 if module.origin.file_id() == Some(parent_id) {
-                    return make_fixes(ctx.sema.db, parent_id, module_name, file_id);
+                    return make_fixes(db, parent_id, module_name, file_id);
                 }
             }
         }

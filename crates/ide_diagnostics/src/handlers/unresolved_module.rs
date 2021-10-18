@@ -1,4 +1,3 @@
-use hir::db::AstDatabase;
 use ide_db::{assists::Assist, base_db::AnchoredPathBuf, source_change::FileSystemEdit};
 use syntax::AstNode;
 
@@ -27,7 +26,7 @@ fn fixes(ctx: &DiagnosticsContext<'_>, d: &hir::UnresolvedModule) -> Option<Vec<
         "Create module",
         FileSystemEdit::CreateFile {
             dst: AnchoredPathBuf {
-                anchor: d.decl.file_id.original_file(ctx.sema.db),
+                anchor: d.decl.file_id.original_file(ctx.sema.db.upcast()),
                 path: d.candidate.clone(),
             },
             initial_contents: "".to_string(),

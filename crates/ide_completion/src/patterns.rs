@@ -5,7 +5,6 @@
 //! and the completions usually query for path specific things on the Path context instead. This simplifies some location handling.
 
 use hir::Semantics;
-use ide_db::RootDatabase;
 use syntax::{
     algo::non_trivia_sibling,
     ast::{self, HasArgList, HasLoopBody},
@@ -140,7 +139,7 @@ pub(crate) fn determine_prev_sibling(name_like: &ast::NameLike) -> Option<Immedi
 }
 
 pub(crate) fn determine_location(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     original_file: &SyntaxNode,
     offset: TextSize,
     name_like: &ast::NameLike,

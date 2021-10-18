@@ -3,10 +3,7 @@
 //! The main reason for this module to exist is the fact that project's items and dependencies' items
 //! are located in different caches, with different APIs.
 use either::Either;
-use hir::{
-    import_map::{self, ImportKind},
-    AsAssocItem, Crate, ItemInNs, Semantics,
-};
+use hir::{AsAssocItem, Crate, ItemInNs, Semantics, db::HirDatabase, import_map::{self, ImportKind}};
 use limit::Limit;
 use syntax::{ast, AstNode, SyntaxKind::NAME};
 
@@ -33,7 +30,8 @@ pub enum AssocItemSearch {
 
 /// Searches for importable items with the given name in the crate and its dependencies.
 pub fn items_with_name<'a>(
-    sema: &'a Semantics<'_, RootDatabase>,
+    db: &RootDatabase,
+    sema: &'a Semantics,
     krate: Crate,
     name: NameToImport,
     assoc_item_search: AssocItemSearch,
@@ -91,21 +89,21 @@ pub fn items_with_name<'a>(
         local_query.limit(limit);
     }
 
-    find_items(sema, krate, assoc_item_search, local_query, external_query)
+    find_items(db, sema, krate, assoc_item_search, local_query, external_query)
 }
 
 fn find_items<'a>(
-    sema: &'a Semantics<'_, RootDatabase>,
+    db: &RootDatabase,
+    sema: &'a Semantics,
     krate: Crate,
     assoc_item_search: AssocItemSearch,
     local_query: symbol_index::Query,
     external_query: import_map::Query,
 ) -> impl Iterator<Item = ItemInNs> + 'a {
     let _p = profile::span("find_items");
-    let db = sema.db;
 
     let external_importables =
-        krate.query_external_importables(db, external_query).map(|external_importable| {
+        krate.query_external_importables(sema.db.upcast(), external_query).map(|external_importable| {
             match external_importable {
                 Either::Left(module_def) => ItemInNs::from(module_def),
                 Either::Right(macro_def) => ItemInNs::from(macro_def),
@@ -130,7 +128,7 @@ fn find_items<'a>(
 }
 
 fn get_name_definition(
-    sema: &Semantics<'_, RootDatabase>,
+    sema: &Semantics,
     import_candidate: &FileSymbol,
 ) -> Option<Definition> {
     let _p = profile::span("get_name_definition");
@@ -146,6 +144,6 @@ fn get_name_definition(
     NameClass::classify(sema, &name)?.defined()
 }
 
-fn is_assoc_item(item: ItemInNs, db: &RootDatabase) -> bool {
+fn is_assoc_item(item: ItemInNs, db: &dyn HirDatabase) -> bool {
     item.as_module_def().and_then(|module_def| module_def.as_assoc_item(db)).is_some()
 }

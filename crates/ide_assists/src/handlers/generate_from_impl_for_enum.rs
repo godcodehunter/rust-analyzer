@@ -1,5 +1,4 @@
 use ide_db::helpers::FamousDefs;
-use ide_db::RootDatabase;
 use syntax::ast::{self, AstNode, HasName};
 
 use crate::{utils::generate_trait_impl_text, AssistContext, AssistId, AssistKind, Assists};
@@ -80,7 +79,7 @@ pub(crate) fn generate_from_impl_for_enum(acc: &mut Assists, ctx: &AssistContext
 }
 
 fn existing_from_impl(
-    sema: &'_ hir::Semantics<'_, RootDatabase>,
+    sema: &'_ hir::Semantics,
     variant: &ast::Variant,
 ) -> Option<()> {
     let variant = sema.to_def(variant)?;

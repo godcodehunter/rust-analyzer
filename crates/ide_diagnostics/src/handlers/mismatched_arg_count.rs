@@ -1,4 +1,4 @@
-use ide_db::base_db::{FileRange, SourceDatabase};
+use ide_db::base_db::FileRange;
 use syntax::{
     algo::find_node_at_range,
     ast::{self, HasArgList},

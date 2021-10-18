@@ -1,5 +1,5 @@
 use ide_db::{
-    base_db::{FileLoader, FileRange},
+    base_db::FileRange,
     source_change::SourceChange,
 };
 use syntax::{TextRange, TextSize};

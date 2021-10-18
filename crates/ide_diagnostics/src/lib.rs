@@ -135,7 +135,7 @@ pub struct DiagnosticsConfig {
 
 struct DiagnosticsContext<'a> {
     config: &'a DiagnosticsConfig,
-    sema: Semantics<'a, RootDatabase>,
+    sema: Semantics<'a>,
     resolve: &'a AssistResolveStrategy,
 }
 
@@ -166,7 +166,7 @@ pub fn diagnostics(
 
     let ctx = DiagnosticsContext { config, sema, resolve };
     if module.is_none() {
-        handlers::unlinked_file::unlinked_file(&ctx, &mut res, file_id);
+        handlers::unlinked_file::unlinked_file(&ctx, db, &mut res, file_id);
     }
 
     let mut diags = Vec::new();
@@ -179,7 +179,7 @@ pub fn diagnostics(
         let d = match diag {
             AnyDiagnostic::AddReferenceHere(d) => handlers::add_reference_here::add_reference_here(&ctx, &d),
             AnyDiagnostic::BreakOutsideOfLoop(d) => handlers::break_outside_of_loop::break_outside_of_loop(&ctx, &d),
-            AnyDiagnostic::IncorrectCase(d) => handlers::incorrect_case::incorrect_case(&ctx, &d),
+            AnyDiagnostic::IncorrectCase(d) => handlers::incorrect_case::incorrect_case(&ctx, db, &d),
             AnyDiagnostic::MacroError(d) => handlers::macro_error::macro_error(&ctx, &d),
             AnyDiagnostic::MismatchedArgCount(d) => handlers::mismatched_arg_count::mismatched_arg_count(&ctx, &d),
             AnyDiagnostic::MissingFields(d) => handlers::missing_fields::missing_fields(&ctx, &d),
