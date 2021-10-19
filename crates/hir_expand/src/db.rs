@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use base_db::{salsa, SourceDatabase};
+use base_db::{SourceDatabase, salsa};
 use limit::Limit;
 use mbe::{syntax_node_to_token_tree, ExpandError, ExpandResult};
 use rustc_hash::FxHashSet;

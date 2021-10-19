@@ -469,7 +469,7 @@ impl Analysis {
 
     /// Returns the set of possible targets to run for the current file.
     pub fn runnables(&self, file_id: FileId) -> Cancellable<Vec<Runnable>> {
-        self.with_db(|db| runnables::runnables(db.upcast(), file_id))
+        self.with_db(|db| runnables::runnables(db, file_id))
     }
 
     /// Returns the set of tests for the given file position.

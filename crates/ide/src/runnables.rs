@@ -4,7 +4,7 @@ use ast::HasName;
 use cfg::CfgExpr;
 use either::Either;
 use hir::{AsAssocItem, HasAttrs, HasSource, HirDisplay, Semantics};
-use ide_db::{RootDatabase, SymbolKind, base_db::{FilePosition, FileRange, Upcast}, helpers::visit_file_defs, search::SearchScope};
+use ide_db::{RootDatabase, SymbolKind, base_db::{FilePosition, FileRange, Upcast}, helpers::visit_file_defs, runnables::RunnableDatabase, search::SearchScope};
 use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 use stdx::{always, format_to};
@@ -103,23 +103,23 @@ impl Runnable {
 }
 
 impl Runnable {
-    pub fn from_db_repr(sema: &Semantics, runnable: ide_db::runnables::RunnableView) -> Self {
+    pub fn from_db_repr(db: &RootDatabase, sema: &Semantics, runnable: &ide_db::runnables::RunnableView) -> Self {
         match runnable {
-            ide_db::runnables::RunnableView::Module { location, content} 
-                => from_mod(sema, runnable),
-            ide_db::runnables::RunnableView::Function(runnable)
-                => from_fn(sema, runnable),
-            ide_db::runnables::RunnableView::Doctest(_) 
-                => todo!(),
+            ide_db::runnables::RunnableView::Node(n) => Self::from_mod(db, sema, n),
+            ide_db::runnables::RunnableView::Leaf(l) => {
+                match l {
+                    ide_db::runnables::Runnable::Function(i) => Self::from_fn(db, sema, i),
+                    ide_db::runnables::Runnable::Doctest(_) => todo!(),
+                }
+            },
         }
     }
     
-    fn from_mod(sema: &Semantics, def: hir::Module) -> Runnable {
-        //TODO: replace by [hir::ModuleDef::canonical_path]
+    fn from_mod(db: &RootDatabase, sema: &Semantics, def: &ide_db::runnables::Node) -> Runnable {
         let path = 
-            def.path_to_root(sema.db).into_iter().rev().filter_map(|it| it.name(sema.db)).join("::");
-        let cfg = def.attrs(sema.db).cfg();
-        let nav = NavigationTarget::from_module_to_decl(sema.db, def);
+            def.location.path_to_root(sema.db).into_iter().rev().filter_map(|it| it.name(sema.db)).join("::");
+        let cfg = def.location.attrs(sema.db).cfg();
+        let nav = NavigationTarget::from_module_to_decl(db, def.location);
         Runnable { 
             use_name_in_title: false, 
             nav, 
@@ -128,13 +128,37 @@ impl Runnable {
         }
     }
     
-    fn from_fn(sema: &Semantics, def: hir::Function) -> Runnable {
-        let cfg = def.attrs(sema.db).cfg();
+    fn from_fn(db: &RootDatabase, sema: &Semantics, def: &ide_db::runnables::RunnableFunc) -> Runnable {
+        let cfg = def.location.attrs(db.upcast()).cfg();
+        // #[test/bench] expands to just the item causing us to lose the attribute, so recover them by going out of the attribute
+        let func = def.location.source(sema.db).unwrap().node_with_attributes(db.upcast());
         let nav = NavigationTarget::from_named(
-            sema.db,
-            func.as_ref().map(|it| it as &dyn ast::NameOwner),
+            db,
+            func.as_ref().map(|it| it as &dyn ast::HasName),
             SymbolKind::Function,
         );
+        
+        let kind = match def.kind {
+            ide_db::runnables::RunnableFuncKind::Test | ide_db::runnables::RunnableFuncKind::Bench => {
+                let canonical_path = {
+                    let def: hir::ModuleDef = def.location.into();
+                    def.canonical_path(db.upcast())
+                };
+                let name_string = def.location.name(db.upcast()).to_string();
+                let test_id = canonical_path.map(TestId::Path).unwrap_or(TestId::Name(name_string));
+                
+                match def.kind {
+                    ide_db::runnables::RunnableFuncKind::Test => {
+                        let attr = TestAttr::from_fn(&func.value);
+                        RunnableKind::Test {test_id, attr}
+                    },
+                    ide_db::runnables::RunnableFuncKind::Bench => RunnableKind::Bench { test_id },
+                    _ => unreachable!()
+                }
+            },
+            ide_db::runnables::RunnableFuncKind::Bin => RunnableKind::Bin,
+        };
+
         Runnable { use_name_in_title: false, nav, kind, cfg }
     }
 }
@@ -151,8 +175,11 @@ impl Runnable {
 // | VS Code | **Rust Analyzer: Run**
 // |===
 // image::https://user-images.githubusercontent.com/48062697/113065583-055aae80-91b1-11eb-958f-d67efcaf6a2f.gif[]
-pub(crate) fn runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Vec<Runnable> {
-    db.file_runnables(file_id)
+pub(crate) fn runnables(db: &RootDatabase, file_id: FileId) -> Vec<Runnable> {
+    let rundb: &dyn RunnableDatabase = db.upcast();
+    let sema = Semantics::new(db);
+    let view = rundb.file_runnables(file_id);
+    view.flatten().into_iter().map(|i| Runnable::from_db_repr(db, &sema, i)).collect()
 }
 
 // Feature: Related Tests
@@ -187,40 +214,41 @@ fn find_related_tests(
     search_scope: Option<SearchScope>,
     tests: &mut FxHashSet<Runnable>,
 ) {
-    if let Some(refs) = references::find_all_refs(sema, position, search_scope) {
-        for (file_id, refs) in refs.into_iter().flat_map(|refs| refs.references) {
-            let file = sema.parse(file_id);
-            let file = file.syntax();
+    // if let Some(refs) = references::find_all_refs(sema, position, search_scope) {
+    //     for (file_id, refs) in refs.into_iter().flat_map(|refs| refs.references) {
+    //         let file = sema.parse(file_id);
+    //         let file = file.syntax();
 
-            // create flattened vec of tokens
-            let tokens = refs.iter().flat_map(|(range, _)| {
-                match file.token_at_offset(range.start()).next() {
-                    Some(token) => sema.descend_into_macros(token),
-                    None => Default::default(),
-                }
-            });
+    //         // create flattened vec of tokens
+    //         let tokens = refs.iter().flat_map(|(range, _)| {
+    //             match file.token_at_offset(range.start()).next() {
+    //                 Some(token) => sema.descend_into_macros(token),
+    //                 None => Default::default(),
+    //             }
+    //         });
 
-            // find first suitable ancestor
-            let functions = tokens
-                .filter_map(|token| token.ancestors().find_map(ast::Fn::cast))
-                .map(|f| hir::InFile::new(sema.hir_file_for(f.syntax()), f));
+    //         // find first suitable ancestor
+    //         let functions = tokens
+    //             .filter_map(|token| token.ancestors().find_map(ast::Fn::cast))
+    //             .map(|f| hir::InFile::new(sema.hir_file_for(f.syntax()), f));
 
-            for fn_def in functions {
-                // #[test/bench] expands to just the item causing us to lose the attribute, so recover them by going out of the attribute
-                let InFile { value: fn_def, .. } = &fn_def.node_with_attributes(sema.db);
-                if let Some(runnable) = as_test_runnable(sema, fn_def) {
-                    // direct test
-                    tests.insert(runnable);
-                } else if let Some(module) = parent_test_module(sema, fn_def) {
-                    // indirect test
-                    find_related_tests_in_module(sema, fn_def, &module, tests);
-                }
-            }
-        }
-    }
+    //         for fn_def in functions {
+    //             // #[test/bench] expands to just the item causing us to lose the attribute, so recover them by going out of the attribute
+    //             let InFile { value: fn_def, .. } = &fn_def.node_with_attributes(sema.db);
+    //             if let Some(runnable) = as_test_runnable(sema, fn_def) {
+    //                 // direct test
+    //                 tests.insert(runnable);
+    //             } else if let Some(module) = parent_test_module(sema, fn_def) {
+    //                 // indirect test
+    //                 find_related_tests_in_module(sema, fn_def, &module, tests);
+    //             }
+    //         }
+    //     }
+    // }
+    todo!()
 }
 fn find_related_tests_in_module(
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     fn_def: &ast::Fn,
     parent_module: &hir::Module,
     tests: &mut FxHashSet<Runnable>,
@@ -233,33 +261,35 @@ fn find_related_tests_in_module(
             hir::ModuleSource::SourceFile(f) => f.syntax().text_range(),
         };
 
-        let file_id = mod_source.file_id.original_file(sema.db);
+        let file_id = mod_source.file_id.original_file(sema.db.upcast());
         let mod_scope = SearchScope::file_range(FileRange { file_id, range });
         let fn_pos = FilePosition { file_id, offset: fn_name.syntax().text_range().start() };
         find_related_tests(sema, fn_pos, Some(mod_scope), tests)
     }
 }
 
-fn as_test_runnable(sema: &Semantics<RootDatabase>, fn_def: &ast::Fn) -> Option<Runnable> {
-    if test_related_attribute(fn_def).is_some() {
-        let function = sema.to_def(fn_def)?;
-        runnable_fn(sema, function)
-    } else {
-        None
-    }
+fn as_test_runnable(sema: &Semantics, fn_def: &ast::Fn) -> Option<Runnable> {
+    // if test_related_attribute(fn_def).is_some() {
+    //     let function = sema.to_def(fn_def)?;
+    //     runnable_fn(sema, function)
+    // } else {
+    //     None
+    // }
+    todo!()
 }
 
-fn parent_test_module(sema: &Semantics<RootDatabase>, fn_def: &ast::Fn) -> Option<hir::Module> {
-    fn_def.syntax().ancestors().find_map(|node| {
-        let module = ast::Module::cast(node)?;
-        let module = sema.to_def(&module)?;
+fn parent_test_module(sema: &Semantics, fn_def: &ast::Fn) -> Option<hir::Module> {
+    // fn_def.syntax().ancestors().find_map(|node| {
+    //     let module = ast::Module::cast(node)?;
+    //     let module = sema.to_def(&module)?;
 
-        if is_contains_runnable(sema, &module) {
-            Some(module)
-        } else {
-            None
-        }
-    })
+    //     if is_contains_runnable(sema, &module) {
+    //         Some(module)
+    //     } else {
+    //         None
+    //     }
+    // })
+    todo!()
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
