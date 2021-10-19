@@ -7,12 +7,7 @@ use std::iter;
 
 use either::Either;
 use hir::{HasSource, Semantics};
-use ide_db::{
-    base_db::FileRange,
-    defs::Definition,
-    helpers::{pick_best_token, FamousDefs},
-    RootDatabase,
-};
+use ide_db::{RootDatabase, base_db::{FileRange, Upcast}, defs::Definition, helpers::{pick_best_token, FamousDefs}, runnables::{RunnableDatabase, RunnableView}};
 use itertools::Itertools;
 use syntax::{ast, match_ast, AstNode, SyntaxKind::*, SyntaxNode, SyntaxToken, T};
 
@@ -20,7 +15,6 @@ use crate::{
     display::TryToNav,
     doc_links::token_as_doc_comment,
     markup::Markup,
-    runnables::{runnable_fn, runnable_mod},
     FileId, FilePosition, NavigationTarget, RangeInfo, Runnable,
 };
 
@@ -97,7 +91,7 @@ pub(crate) fn hover(
     let file = sema.parse(file_id).syntax().clone();
 
     if !range.is_empty() {
-        return hover_ranged(&file, range, sema, config);
+        return hover_ranged(db, &file, range, sema, config);
     }
     let offset = range.start();
 
@@ -111,7 +105,7 @@ pub(crate) fn hover(
     if let Some(doc_comment) = token_as_doc_comment(&original_token) {
         cov_mark::hit!(no_highlight_on_comment_hover);
         return doc_comment.get_definition_with_descend_at(sema, offset, |def, node, range| {
-            let res = hover_for_definition(sema, file_id, def, &node, config)?;
+            let res = hover_for_definition(db, sema, file_id, def, &node, config)?;
             Some(RangeInfo::new(range, res))
         });
     }
@@ -135,7 +129,7 @@ pub(crate) fn hover(
         })
         .flatten()
         .unique_by(|&(def, _)| def)
-        .filter_map(|(def, node)| hover_for_definition(sema, file_id, def, &node, config))
+        .filter_map(|(def, node)| hover_for_definition(db, sema, file_id, def, &node, config))
         .reduce(|mut acc, HoverResult { markup, actions }| {
             acc.actions.extend(actions);
             acc.markup = Markup::from(format!("{}\n---\n{}", acc.markup, markup));
@@ -143,11 +137,11 @@ pub(crate) fn hover(
         });
     if result.is_none() {
         // fallbacks, show keywords or types
-        if let Some(res) = render::keyword(sema, config, &original_token) {
+        if let Some(res) = render::keyword(db, sema, config, &original_token) {
             return Some(RangeInfo::new(original_token.text_range(), res));
         }
         if let res @ Some(_) =
-            descended.iter().find_map(|token| hover_type_fallback(sema, config, token))
+            descended.iter().find_map(|token| hover_type_fallback(db, sema, config, token))
         {
             return res;
         }
@@ -156,7 +150,8 @@ pub(crate) fn hover(
 }
 
 pub(crate) fn hover_for_definition(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     file_id: FileId,
     definition: Definition,
     node: &SyntaxNode,
@@ -168,22 +163,22 @@ pub(crate) fn hover_for_definition(
         }
         _ => None,
     };
-    if let Some(markup) = render::definition(sema.db, definition, famous_defs.as_ref(), config) {
+    if let Some(markup) = render::definition(db, definition, famous_defs.as_ref(), config) {
         let mut res = HoverResult::default();
-        res.markup = render::process_markup(sema.db, definition, &markup, config);
-        if let Some(action) = show_implementations_action(sema.db, definition) {
+        res.markup = render::process_markup(db, definition, &markup, config);
+        if let Some(action) = show_implementations_action(db, definition) {
             res.actions.push(action);
         }
 
-        if let Some(action) = show_fn_references_action(sema.db, definition) {
+        if let Some(action) = show_fn_references_action(db, definition) {
             res.actions.push(action);
         }
 
-        if let Some(action) = runnable_action(sema, definition, file_id) {
+        if let Some(action) = runnable_action(db, sema, definition, file_id) {
             res.actions.push(action);
         }
 
-        if let Some(action) = goto_type_action_for_def(sema.db, definition) {
+        if let Some(action) = goto_type_action_for_def(db, definition) {
             res.actions.push(action);
         }
         return Some(res);
@@ -192,9 +187,10 @@ pub(crate) fn hover_for_definition(
 }
 
 fn hover_ranged(
+    db: &RootDatabase,
     file: &SyntaxNode,
     range: syntax::TextRange,
-    sema: &Semantics<RootDatabase>,
+    sema: &Semantics,
     config: &HoverConfig,
 ) -> Option<RangeInfo<HoverResult>> {
     let expr_or_pat = file.covering_element(range).ancestors().find_map(|it| {
@@ -207,15 +203,15 @@ fn hover_ranged(
         }
     })?;
     let res = match &expr_or_pat {
-        Either::Left(ast::Expr::TryExpr(try_expr)) => render::try_expr(sema, config, try_expr),
+        Either::Left(ast::Expr::TryExpr(try_expr)) => render::try_expr(db, sema, config, try_expr),
         Either::Left(ast::Expr::PrefixExpr(prefix_expr))
             if prefix_expr.op_kind() == Some(ast::UnaryOp::Deref) =>
         {
-            render::deref_expr(sema, config, prefix_expr)
+            render::deref_expr(db, sema, config, prefix_expr)
         }
         _ => None,
     };
-    let res = res.or_else(|| render::type_info(sema, config, &expr_or_pat));
+    let res = res.or_else(|| render::type_info(db, sema, config, &expr_or_pat));
     res.map(|it| {
         let range = match expr_or_pat {
             Either::Left(it) => it.syntax().text_range(),
@@ -226,7 +222,8 @@ fn hover_ranged(
 }
 
 fn hover_type_fallback(
-    sema: &Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &Semantics,
     config: &HoverConfig,
     token: &SyntaxToken,
 ) -> Option<RangeInfo<HoverResult>> {
@@ -246,7 +243,7 @@ fn hover_type_fallback(
         }
     };
 
-    let res = render::type_info(sema, config, &expr_or_pat)?;
+    let res = render::type_info(db, sema, config, &expr_or_pat)?;
     let range = sema.original_range(&node).range;
     Some(RangeInfo::new(range, res))
 }
@@ -285,27 +282,37 @@ fn show_fn_references_action(db: &RootDatabase, def: Definition) -> Option<Hover
 }
 
 fn runnable_action(
-    sema: &hir::Semantics<RootDatabase>,
+    db: &RootDatabase,
+    sema: &hir::Semantics,
     def: Definition,
     file_id: FileId,
 ) -> Option<HoverAction> {
-    match def {
-        Definition::ModuleDef(it) => match it {
-            hir::ModuleDef::Module(it) => runnable_mod(sema, it).map(HoverAction::Runnable),
-            hir::ModuleDef::Function(func) => {
-                let src = func.source(sema.db)?;
+    let rnb: &dyn RunnableDatabase = db.upcast();
+    let rnbls = rnb.file_runnables(file_id);
+    if let Definition::ModuleDef(it) = def {
+        match it {
+            hir::ModuleDef::Module(it) => {
+                return rnbls.get_by_def(&it).map(|i| {
+                    return HoverAction::Runnable(Runnable::from_db_repr(db, sema, i));
+                });
+            },
+            hir::ModuleDef::Function(it) => {
+                let src = it.source(sema.db)?;
                 if src.file_id != file_id.into() {
                     cov_mark::hit!(hover_macro_generated_struct_fn_doc_comment);
                     cov_mark::hit!(hover_macro_generated_struct_fn_doc_attr);
                     return None;
                 }
 
-                runnable_fn(sema, func).map(HoverAction::Runnable)
+                return rnbls.get_by_def(&it).map(|i| {
+                    HoverAction::Runnable(Runnable::from_db_repr(db, sema, i))
+                });
             }
-            _ => None,
-        },
-        _ => None,
+            _ => {},
+        }
     }
+
+    None
 }
 
 fn goto_type_action_for_def(db: &RootDatabase, def: Definition) -> Option<HoverAction> {
