@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use base_db::{FileId, SourceDatabase, SourceDatabaseExt, SourceRoot, Upcast, salsa};
 use either::Either;
-use hir::{Crate, Function, HasAttrs, HasSource, Module, Semantics, db::{AstDatabase, HirDatabase}};
+use hir::{Crate, Function, HasAttrs, HasSource, Module, ModuleDef, Semantics, db::{AstDatabase, HirDatabase}};
 use hir_def::FunctionLoc;
 use rustc_hash::FxHashMap;
 use stdx::{always, format_to};
@@ -54,16 +54,27 @@ pub enum Runnable {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-pub struct Node {
+pub struct MacroCall {
+    call: (),
+    content: LinkedList<RunnableView>,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub struct Module {
     pub location: Module,
     content: LinkedList<RunnableView>,
 }
 
-/// We can think about that tree as a representation a partial view from AST. 
-/// The leaves of which are runnables: [RunnableFunc] and [Doctest], and 
-/// the edges are Modules.
-/// The main purpose of this partial view is that store runnables with 
-/// respect to the project structure.
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub enum Node {
+    MacroCall(MacroCall),
+    Module(Module),
+}
+
+/// We can think about that tree as of a representation a partial view from AST. 
+/// The main purpose why we need a partial view is that reduce the 
+/// time to traverse a full tree. 
+/// That is, this is part of the original tree containing the runnables and branches to them.
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum RunnableView {
     Node(Node),
@@ -98,26 +109,30 @@ impl RunnableView {
                 (DefKey::Function(key), RunnableView::Leaf(Runnable::Function(f))) => {
                     if f.location == **key {
                         ret = Some(it);
+                        true
                     }
                 }
                 (DefKey::Module(key), RunnableView::Node(node)) => {
                     if node.location == **key {
                         ret = Some(it);
+                        true
                     }
                 }
-                _ => {},
+                _ => false,
             }
         });
         ret
     }
 
-    fn dfs<'a>(root: &'a RunnableView, mut handler: impl FnMut(&'a RunnableView)) {
+    // Just DFS algorithm, that accepts tree root and handler function.
+    // Handler function return true for continue crawling or false for stop it. 
+    fn dfs<'a>(root: &'a RunnableView, mut handler: impl FnMut(&'a RunnableView) -> bool) {
         let mut buff = vec![root];
         while let Some(item) = buff.pop() {
             match item {
                 RunnableView::Node(i) 
                     => buff.extend(i.content.iter()),
-                _ => handler(item),
+                _ => if handler(item) {break},
             }   
         }
     }
@@ -125,13 +140,12 @@ impl RunnableView {
     pub fn flatten(&self) -> Vec<&RunnableView> {
         let mut res = Vec::new();
         Self::dfs(self, |i| {
-            res.push(i)
+            res.push(i);
+            false
         });
         res
     }
 }
-
-//TODO: get runnable by defenition
 
 type WorkspaceRunnables = FxHashMap<Crate, Arc<CrateRunnables>>;
 type CrateRunnables = FxHashMap<FileId, Arc<RunnableView>>;
@@ -153,8 +167,11 @@ pub trait RunnableDatabase: hir::db::HirDatabase + Upcast<dyn hir::db::HirDataba
 }
 
 fn workspace_runnables(db: &dyn RunnableDatabase) -> Arc<WorkspaceRunnables> {
+    let _p = profile::span("workspace_runnables");
+
     let mut res = WorkspaceRunnables::default();
     for krate in Crate::all(db.upcast()) {
+        // Excludes libraries and process only what is relevant to the working project
         if !crate_source_root(db, krate).is_library {
             res.insert(krate, db.crate_runnables(krate)); 
         }
@@ -163,6 +180,8 @@ fn workspace_runnables(db: &dyn RunnableDatabase) -> Arc<WorkspaceRunnables> {
 }
 
 fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> Arc<CrateRunnables> {
+    let _p = profile::span("crate_runnables");
+
     let source_root = crate_source_root(db, krate);
     
     let mut res = CrateRunnables::default();
@@ -175,82 +194,157 @@ fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> Arc<CrateRunnable
 }
 
 fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<RunnableView>> {
+    struct Bijection {origin: &Module, accord: Option<&Node>};
+    type MutalPath = Vec<Bijection>;
+
+    // Represents the point from which paths begin to differ
+    struct DifferencePoint<I: Iterator<Item = &mut Bijection>>{ 
+        last_sync: Bijection, 
+        unsync: I,
+    };
+
+    // Compares paths and returns [DifferencePoint] if they are not equvalent 
+    fn find_diff_point(path: &mut MutalPath) -> Option<DifferencePoint> {
+        let iter = path.iter_mut().peekable();
+        loop {
+            let cur = iter.next().unwrap();
+            let peek = iter.peek();
+
+            if peek.is_none() {
+                return None;
+            }
+        
+            if peek.unwrap().accord.is_none() {
+                return Some(DifferencePoint { cur, iter });
+            }
+        }
+    }
+
+    // Reconstructs [RunnableView] branch and maintains consistency [MutalPath] 
+    // in the process.
+    fn syn_branches(dvg_point: &mut DifferencePoint) {
+        dvg_point.unsync.fold(dvg_point.last_sync, |cur, next| {
+            cur.accord.unwrap().content.push_back(Node { location: next.origin, content: Default::default()});
+            next.accord = cur.accord.unwrap().content.back();
+        });
+    }
+
+    pub fn visit_file_defs_with_path(
+        sema: &Semantics,
+        file_id: FileId,
+        cb: &mut dyn FnMut(&mut MutalPath, Either<hir::ModuleDef, hir::Impl>),
+    ) {
+        let db = sema.db;
+        let module = match sema.to_module_def(file_id) {
+            Some(it) => it,
+            None => return,
+        };
+
+        let mut path = MutalPath::new();
+        path.push(Bijection { origin: module, accord: None});
+
+        let mut walk_queue: VecDeque<_> = module.declarations(db).into();
+        while let Some(def) = walk_queue.pop_front() {
+            if let ModuleDef::Module(submodule) = def {
+                if let hir::ModuleSource::Module(_) = submodule.definition_source(db).value {
+                    walk_queue.extend(submodule.declarations(db));
+                    submodule.impl_defs(db).into_iter().for_each(|impl_| cb(Either::Right(impl_)));
+                }
+            }
+            cb(&path, Either::Left(def));
+        }
+        module.impl_defs(db).into_iter().for_each(|impl_| cb(Either::Right(impl_)));
+    }
+
+    let _p = profile::span("file_runnables");
+
     let sema = Semantics::new(db.upcast());
 
-    // TODO:
-    // // Record all runnables that come from macro expansions here instead.
-    // // In case an expansion creates multiple runnables we want to name them to avoid emitting a bunch of equally named runnables.
-    // let mut in_macro_expansion = FxHashMap::<hir::HirFileId, Vec<RunnableView>>::default();
-    // let mut add_opt = |runnable: Option<RunnableView>, def| {
-    //     if let Some(runnable) = runnable.filter(|runnable| {
-    //         always!(
-    //             runnable.nav.file_id == file_id,
-    //             "tried adding a runnable pointing to a different file: {:?} for {:?}",
-    //             runnable.kind,
-    //             file_id
-    //         )
-    //     }) {
-    //         if let Some(def) = def {
-    //             let file_id = match def {
-    //                 hir::ModuleDef::Module(it) => it.declaration_source(db.upcast()).map(|src| src.file_id),
-    //                 hir::ModuleDef::Function(it) => it.source(db.upcast()).map(|src| src.file_id),
-    //                 _ => None,
-    //             };
-    //             if let Some(file_id) = file_id.filter(|file| file.call_node(db.upcast()).is_some()) {
-    //                 in_macro_expansion.entry(file_id).or_default().push(runnable);
-    //                 return;
-    //             }
-    //         }
-    //         res.push(runnable);
-    //     }
-    // };
+    // Record all runnables that come from macro expansions here instead.
+    // In case an expansion creates multiple runnables we want to name them to avoid emitting a bunch of equally named runnables.
+    let mut in_macro_expansion = FxHashMap::<hir::HirFileId, Vec<RunnableView>>::default();
+    let mut add_opt = |runnable: Option<RunnableView>, def| {
+        if let Some(runnable) = runnable.filter(|runnable| {
+            always!(
+                runnable.nav.file_id == file_id,
+                "tried adding a runnable pointing to a different file: {:?} for {:?}",
+                runnable.kind,
+                file_id
+            )
+        }) {
+            if let Some(def) = def {
+                let file_id = match def {
+                    hir::ModuleDef::Module(it) => it.declaration_source(db.upcast()).map(|src| src.file_id),
+                    hir::ModuleDef::Function(it) => it.source(db.upcast()).map(|src| src.file_id),
+                    _ => None,
+                };
+                // Cheks that item from macro call 
+                if let Some(file_id) = file_id.filter(|file| file.call_node(db.upcast()).is_some()) {
+                    in_macro_expansion.entry(file_id).or_default().push(runnable);
+                    return;
+                }
+            }
+            res.push(runnable);
+        }
+    };
+
+    fn is_from_macro(def: ModuleDef) -> bool {
+        let file_id = match def {
+            hir::ModuleDef::Module(it) => it.declaration_source(db.upcast()).map(|src| src.file_id),
+            hir::ModuleDef::Function(it) => it.source(db.upcast()).map(|src| src.file_id),
+            _ => return false,
+        }; 
+        file_id.map(|file| file.call_node(db.upcast())).is_some()
+    }
     
     let mut res = None;
 
-    visit_file_defs(&sema, file_id, &mut |def| match def {
-        Either::Left(def) => {
-            let runnable = match def {
-                hir::ModuleDef::Module(it) => {
-                    Some(RunnableView::Node(Node{location: it, content: Default::default() }))
-                },
-                hir::ModuleDef::Function(it) => runnable_fn(&sema, it),
-                _ => None,
-            };
-            // OLD: add_opt(runnable.or_else(|| module_def_doctest(db, def)), Some(def));
-            // TMP:
-            res = runnable;
-        }
-        Either::Right(impl_) => {
-            // add_opt(runnable_impl(&sema, &impl_), None);
-            // impl_
-            //     .items(db.upcast())
-            //     .into_iter()
-            //     .map(|assoc| {
-            //         (
-            //             match assoc {
-            //                 hir::AssocItem::Function(it) => runnable_fn(&sema, it)
-            //                     .or_else(|| module_def_doctest(db, it.into())),
-            //                 hir::AssocItem::Const(it) => module_def_doctest(db, it.into()),
-            //                 hir::AssocItem::TypeAlias(it) => module_def_doctest(db, it.into()),
-            //             },
-            //             assoc,
-            //         )
-            //     })
-            //     .for_each(|(r, assoc)| add_opt(r, Some(assoc.into())));
-        }
-    });
+    visit_file_defs_with_path(&sema, file_id, &mut |path, def| 
+        if let Some(runnable) = match def {
+            Either::Left(hir::ModuleDef::Function(it)) => runnable_fn(&sema, it),
+            Either::Left(hir::ModuleDef::Module(m)) => module_def_doctest(db, def),
+            // Either::Right(impl_) => {
+            //     let runnable = runnable_impl(&sema, def);
 
-    // sema.to_module_defs(file_id)
-    //     .map(|it| runnable_mod_outline_definition(&sema, it))
-    //     .for_each(|it| add_opt(it, None));
+            //     add_opt(runnable, None);
+            //     impl_
+            //         .items(db.upcast())
+            //         .into_iter()
+            //         .map(|assoc| {
+            //             (
+            //                 match assoc {
+            //                     hir::AssocItem::Function(it) => runnable_fn(&sema, it)
+            //                         .or_else(|| module_def_doctest(db, it.into())),
+            //                     hir::AssocItem::Const(it) => module_def_doctest(db, it.into()),
+            //                     hir::AssocItem::TypeAlias(it) => module_def_doctest(db, it.into()),
+            //                 },
+            //                 assoc,
+            //             )
+            //         })
+            //         .for_each(|(r, assoc)| add_opt(r, Some(assoc.into())));
+            // }
+            _ => None,
+        } {
+            // add_opt(runnable.or_else(|| module_def_doctest(db, def)), Some(def));
+            if let Some(dvg_point) = find_diff_point(&mut path) {
+                syn_branches(&dvg_point);
+            }
+            path.last_mut().unwrap().accord.unwrap().content.push_back(runnable);
+        }
+    );
 
-    // res.extend(in_macro_expansion.into_iter().flat_map(|(_, runnables)| {
-    //     let use_name_in_title = runnables.len() != 1;
-    //     runnables.into_iter().map(move |mut r| {
-    //         r.use_name_in_title = use_name_in_title;
-    //         r
-    //     })
-    // }));
+    sema.to_module_defs(file_id)
+        .map(|it| runnable_mod_outline_definition(&sema, it))
+        .for_each(|it| add_opt(it, None));
+
+    res.extend(in_macro_expansion.into_iter().flat_map(|(_, runnables)| {
+        let use_name_in_title = runnables.len() != 1;
+        runnables.into_iter().map(move |mut r| {
+            r.use_name_in_title = use_name_in_title;
+            r
+        })
+    }));
+
     res.map(Arc::new)
 }
 
@@ -328,92 +422,35 @@ fn runnable_mod_outline_definition(
     sema: &Semantics,
     def: hir::Module,
 ) -> Option<RunnableView> {
-    // if !is_contains_runnable(sema, &def) {
-    //     return None;
-    // }
-    //TODO: let path =
-    //TODO:    def.path_to_root(sema.db).into_iter().rev().filter_map(|it| it.name(sema.db)).join("::");
+    if !is_contains_runnable(sema, &def) {
+        return None;
+    }
+    let path = def.path_to_root(sema.db).into_iter().rev().filter_map(|it| it.name(sema.db)).join("::");
 
-    //TODO: let attrs = def.attrs(sema.db);
-    //TODO: let cfg = attrs.cfg();
-    // match def.definition_source(sema.db).value {
-    //     hir::ModuleSource::SourceFile(_) => Some(Runnable {
-    //         use_name_in_title: false,
-    //         nav: def.to_nav(sema.db),
-    //         kind: RunnableKind::TestMod { path },
-    //         cfg,
-    //     }),
-    //     _ => None,
-    // }
+    let attrs = def.attrs(sema.db);
+    let cfg = attrs.cfg();
+    match def.definition_source(sema.db).value {
+        hir::ModuleSource::SourceFile(_) => Some(Runnable {
+            use_name_in_title: false,
+            nav: def.to_nav(sema.db),
+            kind: RunnableKind::TestMod { path },
+            cfg,
+        }),
+        _ => None,
+    }
 
-    // Some(RunnableView::Module{ location: def, content: ()})
-    todo!()
+    Some(RunnableView::Module{ location: def, content: ()})
 }
 
 /// Checks if module containe runnable in doc than create [Runnable] from it
 fn module_def_doctest(db: &dyn RunnableDatabase, def: hir::ModuleDef) -> Option<RunnableView> {
-    // let attrs = match def {
-    //     hir::ModuleDef::Module(it) => it.attrs(db),
-    //     hir::ModuleDef::Function(it) => it.attrs(db),
-    //     hir::ModuleDef::Adt(it) => it.attrs(db),
-    //     hir::ModuleDef::Variant(it) => it.attrs(db),
-    //     hir::ModuleDef::Const(it) => it.attrs(db),
-    //     hir::ModuleDef::Static(it) => it.attrs(db),
-    //     hir::ModuleDef::Trait(it) => it.attrs(db),
-    //     hir::ModuleDef::TypeAlias(it) => it.attrs(db),
-    //     hir::ModuleDef::BuiltinType(_) => return None,
-    // };
-    // if !is_contains_runnable_in_doc(&attrs) {
-    //     return None;
-    // }
-    // let def_name = def.name(db)?;
-    // let path = (|| {
-    //     let mut path = String::new();
-    //     def.canonical_module_path(db)?
-    //         .flat_map(|it| it.name(db))
-    //         .for_each(|name| format_to!(path, "{}::", name));
-    //     // This probably belongs to canonical_path?
-    //     if let Some(assoc_item) = def.as_assoc_item(db) {
-    //         if let hir::AssocItemContainer::Impl(imp) = assoc_item.container(db) {
-    //             let ty = imp.self_ty(db);
-    //             if let Some(adt) = ty.as_adt() {
-    //                 let name = adt.name(db);
-    //                 let mut ty_args = ty.type_arguments().peekable();
-    //                 format_to!(path, "{}", name);
-    //                 if ty_args.peek().is_some() {
-    //                     format_to!(
-    //                         path,
-    //                         "<{}>",
-    //                         ty_args.format_with(", ", |ty, cb| cb(&ty.display(db)))
-    //                     );
-    //                 }
-    //                 format_to!(path, "::{}", def_name);
-    //                 return Some(path);
-    //             }
-    //         }
-    //     }
-    //     format_to!(path, "{}", def_name);
-    //     Some(path)
-    // })();
+    if let Some(attrs) = attrs.attrs(db) {
+        if !is_contains_runnable_in_doc(&attrs) {
+            return None;
+        }
+    }
 
-    // let test_id = path.map_or_else(|| TestId::Name(def_name.to_string()), TestId::Path);
-
-    // let mut nav = match def {
-    //     hir::ModuleDef::Module(def) => NavigationTarget::from_module_to_decl(db, def),
-    //     def => def.try_to_nav(db)?,
-    // };
-    // nav.focus_range = None;
-    // nav.description = None;
-    // nav.docs = None;
-    // nav.kind = None;
-    // let res = RunnableView {
-    //     use_name_in_title: false,
-    //     nav,
-    //     kind: RunnableKind::DocTest { test_id },
-    //     cfg: attrs.cfg(),
-    // };
-    // Some(res)
-    todo!()
+    Some(RunnableView::Leaf(Runnable::Doctest(Doctest{ location: () })))
 }
 
 /// Checks if implementation containe runnable in doc than create [Runnable] from it
@@ -423,8 +460,7 @@ fn runnable_impl(sema: &Semantics, def: &hir::Impl) -> Option<RunnableView> {
         return None;
     }
 
-    // Some(RunnableView::Leaf(Runnable::Doctest(Doctest{ location: () })))
-    None
+    Some(RunnableView::Leaf(Runnable::Doctest(Doctest{ location: () })))
 }
 
 /// Checks if a [hir::Function] is runnable and if it is, then construct [Runnable] from it 
