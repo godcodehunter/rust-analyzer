@@ -576,14 +576,15 @@ pub struct Append {
 
 pub enum RunTests {}
 
-impl Request for AnalyzerStatus {
-    type Params = RunTestsParams;
-    type Result = ();
+// impl Request for AnalyzerStatus {
+//     type Params = RunTestsParams;
+//     type Result = ();
 
-    const METHOD: &'static str = "experimental/runTests";
-}
+//     const METHOD: &'static str = "experimental/runTests";
+// }
 
-enum RunKind {
+#[derive(Deserialize, Serialize, Debug)]
+pub enum RunKind {
     Run,
     Debug,
 }
@@ -599,7 +600,7 @@ pub struct RunTestsParams {
 pub enum RunStatusNotification {}
 
 impl Notification for RunStatusNotification {
-    type Params = Vec<>;
+    type Params = Vec<()>;
 
     const METHOD: &'static str = "experimental/runStatusUpdate";
 }
@@ -613,6 +614,7 @@ struct TestMessage {
     //TODO: location: (),
 }
 
+#[derive(Deserialize, Serialize, Debug)]
 enum UpdateKind {
     Started = 0,
     Failed = 1,
