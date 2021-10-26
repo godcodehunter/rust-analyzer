@@ -288,27 +288,29 @@ fn runnable_action(
     file_id: FileId,
 ) -> Option<HoverAction> {
     let rnb: &dyn RunnableDatabase = db.upcast();
-    let rnbls = rnb.file_runnables(file_id);
-    if let Definition::ModuleDef(it) = def {
-        match it {
-            hir::ModuleDef::Module(it) => {
-                return rnbls.get_by_def(&it).map(|i| {
-                    return HoverAction::Runnable(Runnable::from_db_repr(db, sema, i));
-                });
-            },
-            hir::ModuleDef::Function(it) => {
-                let src = it.source(sema.db)?;
-                if src.file_id != file_id.into() {
-                    cov_mark::hit!(hover_macro_generated_struct_fn_doc_comment);
-                    cov_mark::hit!(hover_macro_generated_struct_fn_doc_attr);
-                    return None;
+    
+    if let Some(rnbls) = rnb.file_runnables(file_id) {
+        if let Definition::ModuleDef(it) = def {
+            match it {
+                hir::ModuleDef::Module(it) => {
+                    return rnbls.get_by_def(&it).map(|i| {
+                        HoverAction::Runnable(Runnable::from_db_repr(db, sema, i))
+                    });
+                },
+                hir::ModuleDef::Function(it) => {
+                    let src = it.source(sema.db)?;
+                    if src.file_id != file_id.into() {
+                        cov_mark::hit!(hover_macro_generated_struct_fn_doc_comment);
+                        cov_mark::hit!(hover_macro_generated_struct_fn_doc_attr);
+                        return None;
+                    }
+    
+                    return rnbls.get_by_def(&it).map(|i| {
+                        HoverAction::Runnable(Runnable::from_db_repr(db, sema, i))
+                    });
                 }
-
-                return rnbls.get_by_def(&it).map(|i| {
-                    HoverAction::Runnable(Runnable::from_db_repr(db, sema, i))
-                });
+                _ => {},
             }
-            _ => {},
         }
     }
 
