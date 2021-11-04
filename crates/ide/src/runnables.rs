@@ -116,16 +116,17 @@ impl Runnable {
     }
     
     fn from_mod(db: &RootDatabase, sema: &Semantics, def: &ide_db::runnables::Node) -> Runnable {
-        let path = 
-            def.location.path_to_root(sema.db).into_iter().rev().filter_map(|it| it.name(sema.db)).join("::");
-        let cfg = def.location.attrs(sema.db).cfg();
-        let nav = NavigationTarget::from_module_to_decl(db, def.location);
-        Runnable { 
-            use_name_in_title: false, 
-            nav, 
-            kind: RunnableKind::TestMod { path }, 
-            cfg 
-        }
+        // let path = 
+        //     def.location.path_to_root(sema.db).into_iter().rev().filter_map(|it| it.name(sema.db)).join("::");
+        // let cfg = def.location.attrs(sema.db).cfg();
+        // let nav = NavigationTarget::from_module_to_decl(db, def.location);
+        // Runnable { 
+        //     use_name_in_title: false, 
+        //     nav, 
+        //     kind: RunnableKind::TestMod { path }, 
+        //     cfg 
+        // }
+        todo!()
     }
     
     fn from_fn(db: &RootDatabase, sema: &Semantics, def: &ide_db::runnables::RunnableFunc) -> Runnable {
@@ -178,8 +179,11 @@ impl Runnable {
 pub(crate) fn runnables(db: &RootDatabase, file_id: FileId) -> Vec<Runnable> {
     let rundb: &dyn RunnableDatabase = db.upcast();
     let sema = Semantics::new(db);
-    let view = rundb.file_runnables(file_id);
-    view.flatten().into_iter().map(|i| Runnable::from_db_repr(db, &sema, i)).collect()
+    if let Some(view) = rundb.file_runnables(file_id) {
+        return view.flatten().into_iter().map(|i| Runnable::from_db_repr(db, &sema, i)).collect();
+    } else {
+        Default::default()
+    }
 }
 
 // Feature: Related Tests

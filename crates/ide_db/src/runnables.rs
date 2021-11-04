@@ -4,6 +4,7 @@ use base_db::{FileId, SourceDatabase, SourceDatabaseExt, SourceRoot, Upcast, sal
 use either::Either;
 use hir::{self, Crate, Function, HasAttrs, HasSource, ModuleDef, Semantics, db::{AstDatabase, HirDatabase}};
 use hir_def::FunctionLoc;
+use rayon::iter::IntoParallelRefIterator;
 use rustc_hash::FxHashMap;
 use stdx::{always, format_to};
 use syntax::{AstNode, TextRange, ast::{self, HasAttrs as _}};
@@ -196,18 +197,19 @@ fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> Arc<CrateRunnable
 }
 
 fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<RunnableView>> {
-    struct Bijection<'a> {origin: &'a hir::Module, accord: Option<&'a Module>};
+    struct Bijection<'a> {
+        origin: &'a hir::Module, 
+        accord: Option<&'a mut Module>,
+    }
+
     type MutalPath<'a> = Vec<Bijection<'a>>;
 
     // Represents the point from which paths begin to differ
-    struct DifferencePoint<'a>{ 
-        last_sync: &'a mut Bijection<'a>, 
-        unsync: Peekable<std::slice::IterMut<'a, Bijection<'a>>>,
-    };
+    struct DifferencePoint(usize);
 
     // Compares paths and returns [DifferencePoint] if they are not equvalent 
-    fn find_diff_point<'a>(path: &'a mut MutalPath<'a>) -> Option<DifferencePoint<'a>> {
-        let iter = path.iter_mut().peekable();
+    fn find_diff_point(path: &MutalPath) -> Option<DifferencePoint> {
+        let mut iter = path.iter().enumerate().peekable();
         loop {
             let cur = iter.next().unwrap();
             let peek = iter.peek();
@@ -216,33 +218,36 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
                 return None;
             }
         
-            if peek.unwrap().accord.is_none() {
-                return Some(DifferencePoint { last_sync: cur, unsync: iter });
+            if peek.unwrap().1.accord.is_none() {
+                return Some(DifferencePoint(cur.0));
             }
         }
     }
 
     // Reconstructs [RunnableView] branch and maintains consistency [MutalPath] 
     // in the process.
-    fn syn_branches<'a>(dvg_point: &mut DifferencePoint<'a>) {
-        dvg_point.unsync.fold(dvg_point.last_sync, |cur, next| {
+    fn syn_branches<'a>(path: &mut MutalPath, dvg_point: &DifferencePoint) {
+        let mut last_sync = path.iter_mut();
+        let init = last_sync.next().unwrap();
+
+        last_sync.fold(init, |cur, next| {
             let node = Node::Module(Module { 
                 location: *next.origin, 
                 content: Default::default()
             });
-            let content = &cur.accord.unwrap().content;
+            let content = &mut cur.accord.as_mut().unwrap().content;
             content.push_back(RunnableView::Node(node));
-            if let RunnableView::Node(Node::Module(ref m))= content.back().unwrap() {
+            if let RunnableView::Node(Node::Module(ref mut m))= content.back_mut().unwrap() {
                 next.accord = Some(m);
             }
             next
         });
     }
 
-    pub fn visit_file_defs_with_path(
+    fn visit_file_defs_with_path(
         sema: &Semantics,
         file_id: FileId,
-        cb: &mut dyn FnMut(&mut MutalPath, Either<hir::ModuleDef, hir::Impl>),
+        mut cb: impl FnMut(&Semantics, &mut MutalPath, Either<hir::ModuleDef, hir::Impl>),
     ) {
         let db = sema.db;
         let module = match sema.to_module_def(file_id) {
@@ -258,12 +263,12 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
             if let ModuleDef::Module(submodule) = def {
                 if let hir::ModuleSource::Module(_) = submodule.definition_source(db).value {
                     walk_queue.extend(submodule.declarations(db));
-                    submodule.impl_defs(db).into_iter().for_each(|impl_| cb(&mut path, Either::Right(impl_)));
+                    submodule.impl_defs(db).into_iter().for_each(|impl_| cb(sema, &mut path, Either::Right(impl_)));
                 }
             }
-            cb(&mut path, Either::Left(def));
+            cb(sema, &mut path, Either::Left(def));
         }
-        module.impl_defs(db).into_iter().for_each(|impl_| cb(&mut path, Either::Right(impl_)));
+        module.impl_defs(db).into_iter().for_each(|impl_| cb(sema, &mut path, Either::Right(impl_)));
     }
 
     fn is_from_macro(db: &dyn HirDatabase, def: &ModuleDef) -> bool {
@@ -281,7 +286,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
 
     let mut res = None;
     
-    visit_file_defs_with_path(&sema, file_id, &mut |path, def| {
+    fn visitor<'a>(db: &dyn RunnableDatabase, sema: &Semantics, path: &'a mut MutalPath<'a>, def: Either<hir::ModuleDef, hir::Impl>) {
         // TODO
         // if is_from_macro(def) {
         //     
@@ -298,7 +303,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
                 ModuleDef::TypeAlias(i) => has_doctest(db.upcast(), i),
                 ModuleDef::BuiltinType(i) => None,
             },
-            Either::Right(_impl) => has_doctest(db.upcast(), _impl),
+            Either::Right(_impl) => todo!(), //has_doctest(db.upcast(), _impl),
         };
         let function = match def {
             Either::Left(hir::ModuleDef::Function(it)) => runnable_fn(&sema, it),
@@ -306,11 +311,11 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         };
         
         if doctest.is_some() || doctest.is_some() {
-            if let Some(dvg_point) = find_diff_point(path) {
-                syn_branches(&mut dvg_point);
+            if let Some(ref dvg_point) = find_diff_point(path) {
+                syn_branches(path, dvg_point);
             }
             
-            let content = &path.last_mut().unwrap().accord.unwrap().content;
+            let content = &mut path.last_mut().unwrap().accord.as_mut().unwrap().content;
             
             if let Some(runnable) = function {
                 content.push_back(runnable);
@@ -319,7 +324,9 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
                 content.push_back(runnable);
             }
         }
-    });
+    }
+
+    visit_file_defs_with_path(&sema, file_id, | sema, path, item| visitor(db, sema, path, item));
 
     // sema.to_module_defs(file_id)
     //     .map(|it| runnable_mod_outline_definition(&sema, it))
