@@ -226,7 +226,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
 
     // Reconstructs [RunnableView] branch and maintains consistency [MutalPath] 
     // in the process.
-    fn syn_branches<'a>(path: &mut MutalPath, dvg_point: &DifferencePoint) {
+    fn syn_branches<'a>(path: &'a mut MutalPath<'a>, dvg_point: &DifferencePoint) {
         let mut last_sync = path.iter_mut();
         let init = last_sync.next().unwrap();
 
@@ -245,30 +245,31 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
     }
 
     fn visit_file_defs_with_path(
+        db: &dyn RunnableDatabase,
         sema: &Semantics,
         file_id: FileId,
-        mut cb: impl FnMut(&Semantics, &mut MutalPath, Either<hir::ModuleDef, hir::Impl>),
+        mut cb: impl for<'a> FnMut(&dyn RunnableDatabase, &Semantics, &'a mut MutalPath<'a>, Either<hir::ModuleDef, hir::Impl>),
     ) {
-        let db = sema.db;
-        let module = match sema.to_module_def(file_id) {
-            Some(it) => it,
-            None => return,
-        };
+        // let module = match sema.to_module_def(file_id) {
+        //     Some(it) => it,
+        //     None => return,
+        // };
 
-        let mut path = MutalPath::new();
-        path.push(Bijection { origin: &module, accord: None});
+        // let mut path = MutalPath::new();
+        // path.push(Bijection { origin: &module, accord: None});
 
-        let mut walk_queue: VecDeque<_> = module.declarations(db).into();
-        while let Some(def) = walk_queue.pop_front() {
-            if let ModuleDef::Module(submodule) = def {
-                if let hir::ModuleSource::Module(_) = submodule.definition_source(db).value {
-                    walk_queue.extend(submodule.declarations(db));
-                    submodule.impl_defs(db).into_iter().for_each(|impl_| cb(sema, &mut path, Either::Right(impl_)));
-                }
-            }
-            cb(sema, &mut path, Either::Left(def));
-        }
-        module.impl_defs(db).into_iter().for_each(|impl_| cb(sema, &mut path, Either::Right(impl_)));
+        // let mut walk_queue: VecDeque<_> = module.declarations(sema.db).into();
+        // while let Some(def) = walk_queue.pop_front() {
+        //     if let ModuleDef::Module(submodule) = def {
+        //         if let hir::ModuleSource::Module(_) = submodule.definition_source(sema.db).value {
+        //             walk_queue.extend(submodule.declarations(sema.db));
+        //             submodule.impl_defs(sema.db).into_iter().for_each(|impl_| cb(db, sema, &mut path, Either::Right(impl_)));
+        //         }
+        //     }
+        //     cb(db, sema, &mut path, Either::Left(def));
+        // }
+        // module.impl_defs(sema.db).into_iter().for_each(|impl_| cb(db, sema, &mut path, Either::Right(impl_)));
+        todo!()
     }
 
     fn is_from_macro(db: &dyn HirDatabase, def: &ModuleDef) -> bool {
@@ -315,18 +316,19 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
                 syn_branches(path, dvg_point);
             }
             
-            let content = &mut path.last_mut().unwrap().accord.as_mut().unwrap().content;
+            // let content = &mut path.last_mut().unwrap().accord.as_mut().unwrap().content;
             
-            if let Some(runnable) = function {
-                content.push_back(runnable);
-            }
-            if let Some(runnable) = doctest {
-                content.push_back(runnable);
-            }
+            // if let Some(runnable) = function {
+            //     content.push_back(runnable);
+            // }
+            // if let Some(runnable) = doctest {
+            //     content.push_back(runnable);
+            // }
+            // TODO
         }
     }
 
-    visit_file_defs_with_path(&sema, file_id, | sema, path, item| visitor(db, sema, path, item));
+    visit_file_defs_with_path(db, &sema, file_id, visitor);
 
     // sema.to_module_defs(file_id)
     //     .map(|it| runnable_mod_outline_definition(&sema, it))
