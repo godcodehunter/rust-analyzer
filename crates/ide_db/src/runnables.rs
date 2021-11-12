@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{borrow::BorrowMut, sync::Arc};
 
 use base_db::{FileId, SourceDatabase, SourceDatabaseExt, SourceRoot, Upcast, salsa};
 use either::Either;
@@ -10,6 +10,7 @@ use stdx::{always, format_to};
 use syntax::{AstNode, TextRange, ast::{self, HasAttrs as _}};
 use crate::helpers::visit_file_defs;
 use std::collections::{LinkedList, VecDeque};
+use std::cell::RefCell;
 
 /// Defines the kind of [RunnableFunc]
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -197,12 +198,13 @@ fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> Arc<CrateRunnable
 }
 
 fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<RunnableView>> {
-    struct Bijection<'a> {
-        origin: &'a hir::Module, 
-        accord: Option<&'a mut Module>,
+    struct Bijection<'origin, 'accord> 
+    where 'origin: 'accord {
+        origin: &'origin hir::Module, 
+        accord: Option<&'accord mut Module>,
     }
 
-    type MutalPath<'a> = Vec<Bijection<'a>>;
+    type MutalPath<'origin, 'accord> = Vec<Bijection<'origin, 'accord>>;
 
     // Represents the point from which paths begin to differ
     struct DifferencePoint(usize);
@@ -226,19 +228,23 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
 
     // Reconstructs [RunnableView] branch and maintains consistency [MutalPath] 
     // in the process.
-    fn syn_branches<'a>(path: &'a mut MutalPath<'a>, dvg_point: &DifferencePoint) {
-        let mut last_sync = path.iter_mut();
+    fn syn_branches<'path, 'origin, 'accord>(
+        path: &'path RefCell<MutalPath<'origin, 'accord>>, 
+        dvg_point: &DifferencePoint
+    ) where 'path: 'accord {
+        let mut borrowed = path.borrow_mut();
+        let mut last_sync = borrowed.iter_mut();
         let init = last_sync.next().unwrap();
 
-        last_sync.fold(init, |cur, next| {
-            let node = Node::Module(Module { 
+        last_sync.fold(init, |cur: &mut Bijection, next: &mut Bijection| -> &mut Bijection {
+            let node = Node::Module(Module{ 
                 location: *next.origin, 
-                content: Default::default()
+                content: Default::default(),
             });
             let content = &mut cur.accord.as_mut().unwrap().content;
             content.push_back(RunnableView::Node(node));
             if let RunnableView::Node(Node::Module(ref mut m))= content.back_mut().unwrap() {
-                next.accord = Some(m);
+                // next.accord = Some(m);
             }
             next
         });
@@ -248,28 +254,27 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         db: &dyn RunnableDatabase,
         sema: &Semantics,
         file_id: FileId,
-        mut cb: impl for<'a> FnMut(&dyn RunnableDatabase, &Semantics, &'a mut MutalPath<'a>, Either<hir::ModuleDef, hir::Impl>),
+        mut callback: impl FnMut(&RunnableDatabase, &Semantics, &RefCell<MutalPath>, Either<hir::ModuleDef, hir::Impl>),
     ) {
-        // let module = match sema.to_module_def(file_id) {
-        //     Some(it) => it,
-        //     None => return,
-        // };
+        let module = match sema.to_module_def(file_id) {
+            Some(it) => it,
+            None => return,
+        };
+        
+        let mut path = RefCell::new(MutalPath::new());
+        path.borrow_mut().push(Bijection { origin: &module, accord: None});
 
-        // let mut path = MutalPath::new();
-        // path.push(Bijection { origin: &module, accord: None});
-
-        // let mut walk_queue: VecDeque<_> = module.declarations(sema.db).into();
-        // while let Some(def) = walk_queue.pop_front() {
-        //     if let ModuleDef::Module(submodule) = def {
-        //         if let hir::ModuleSource::Module(_) = submodule.definition_source(sema.db).value {
-        //             walk_queue.extend(submodule.declarations(sema.db));
-        //             submodule.impl_defs(sema.db).into_iter().for_each(|impl_| cb(db, sema, &mut path, Either::Right(impl_)));
-        //         }
-        //     }
-        //     cb(db, sema, &mut path, Either::Left(def));
-        // }
+        let mut walk_queue: VecDeque<_> = module.declarations(sema.db).into();
+        while let Some(def) = walk_queue.pop_front() {
+            // if let ModuleDef::Module(submodule) = def {
+            //     if let hir::ModuleSource::Module(_) = submodule.definition_source(sema.db).value {
+            //         walk_queue.extend(submodule.declarations(sema.db));
+            //         submodule.impl_defs(sema.db).into_iter().for_each(|impl_| cb(db, sema, &mut path, Either::Right(impl_)));
+            //     }
+            // }
+            callback(db, sema, &mut path, Either::Left(def));
+        }
         // module.impl_defs(sema.db).into_iter().for_each(|impl_| cb(db, sema, &mut path, Either::Right(impl_)));
-        todo!()
     }
 
     fn is_from_macro(db: &dyn HirDatabase, def: &ModuleDef) -> bool {
@@ -287,11 +292,13 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
 
     let mut res = None;
     
-    fn visitor<'a>(db: &dyn RunnableDatabase, sema: &Semantics, path: &'a mut MutalPath<'a>, def: Either<hir::ModuleDef, hir::Impl>) {
-        // TODO
-        // if is_from_macro(def) {
-        //     
-        // }
+    visit_file_defs_with_path(db, &sema, file_id,
+        |
+            db: &dyn RunnableDatabase, 
+            sema: &Semantics, 
+            path: &RefCell<MutalPath>, 
+            def: Either<hir::ModuleDef, hir::Impl>
+        | {
         let doctest = match def {
             Either::Left(m) => match m {
                 ModuleDef::Module(i) => has_doctest(db.upcast(), i),
@@ -311,24 +318,22 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
             _ => None,
         };
         
-        if doctest.is_some() || doctest.is_some() {
-            if let Some(ref dvg_point) = find_diff_point(path) {
+        if doctest.is_some() || function.is_some() {
+            if let Some(ref dvg_point) = find_diff_point(&path.borrow()) {
                 syn_branches(path, dvg_point);
             }
             
-            // let content = &mut path.last_mut().unwrap().accord.as_mut().unwrap().content;
+            let mut borrowed = path.borrow_mut();
+            let content = &mut borrowed.last_mut().unwrap().accord.as_mut().unwrap().content;
             
-            // if let Some(runnable) = function {
-            //     content.push_back(runnable);
-            // }
-            // if let Some(runnable) = doctest {
-            //     content.push_back(runnable);
-            // }
-            // TODO
+            if let Some(runnable) = function {
+                content.push_back(runnable);
+            }
+            if let Some(runnable) = doctest {
+                content.push_back(runnable);
+            }
         }
-    }
-
-    visit_file_defs_with_path(db, &sema, file_id, visitor);
+    });
 
     // sema.to_module_defs(file_id)
     //     .map(|it| runnable_mod_outline_definition(&sema, it))
