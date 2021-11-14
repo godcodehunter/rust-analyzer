@@ -198,13 +198,12 @@ fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> Arc<CrateRunnable
 }
 
 fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<RunnableView>> {
-    struct Bijection<'origin, 'accord> 
-    where 'origin: 'accord {
+    struct Bijection<'origin> {
         origin: &'origin hir::Module, 
-        accord: Option<&'accord mut Module>,
+        accord: Option<*mut Module>,
     }
 
-    type MutalPath<'origin, 'accord> = Vec<Bijection<'origin, 'accord>>;
+    type MutalPath<'origin> = Vec<Bijection<'origin>>;
 
     // Represents the point from which paths begin to differ
     struct DifferencePoint(usize);
@@ -228,10 +227,10 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
 
     // Reconstructs [RunnableView] branch and maintains consistency [MutalPath] 
     // in the process.
-    fn syn_branches<'path, 'origin, 'accord>(
-        path: &'path RefCell<MutalPath<'origin, 'accord>>, 
+    fn syn_branches<'path, 'origin>(
+        path: &'path RefCell<MutalPath<'origin>>, 
         dvg_point: &DifferencePoint
-    ) where 'path: 'accord {
+    ) {
         let mut borrowed = path.borrow_mut();
         let mut last_sync = borrowed.iter_mut();
         let init = last_sync.next().unwrap();
@@ -241,10 +240,12 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
                 location: *next.origin, 
                 content: Default::default(),
             });
-            let content = &mut cur.accord.as_mut().unwrap().content;
-            content.push_back(RunnableView::Node(node));
-            if let RunnableView::Node(Node::Module(ref mut m))= content.back_mut().unwrap() {
-                // next.accord = Some(m);
+            unsafe {
+                let content = &mut (*cur.accord.unwrap()).content;
+                content.push_back(RunnableView::Node(node));
+                if let RunnableView::Node(Node::Module(ref mut m))= content.back_mut().unwrap() {
+                    next.accord = Some(m);
+                }
             }
             next
         });
@@ -324,13 +325,16 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
             }
             
             let mut borrowed = path.borrow_mut();
-            let content = &mut borrowed.last_mut().unwrap().accord.as_mut().unwrap().content;
+
+            unsafe {
+                let content = &mut (*borrowed.last_mut().unwrap().accord.unwrap()).content;
             
-            if let Some(runnable) = function {
-                content.push_back(runnable);
-            }
-            if let Some(runnable) = doctest {
-                content.push_back(runnable);
+                if let Some(runnable) = function {
+                    content.push_back(runnable);
+                }
+                if let Some(runnable) = doctest {
+                    content.push_back(runnable);
+                }
             }
         }
     });
