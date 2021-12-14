@@ -545,11 +545,11 @@ impl Request for SubscriptionRequest {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SubscriptionRequestParams {
-    pub data_objects: Vec<String>
+    pub data_objects: Vec<String>,
 }
 
 #[derive(Debug)]
-pub enum DataUpdate{}
+pub enum DataUpdate {}
 
 impl Notification for DataUpdate {
     type Params = DataUpdateParams;
@@ -563,16 +563,16 @@ pub struct DataUpdateParams {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Patch {
-    pub delete: Vec<usize>,   
+    pub delete: Vec<usize>,
     pub append: Vec<Append>,
-}   
+}
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Append {
     pub target_id: usize,
     //TODO: ...
-} 
+}
 
 pub enum RunTests {}
 
@@ -635,7 +635,7 @@ struct Skiped {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct Finish {
-    kind: UpdateKind, 
+    kind: UpdateKind,
 }
 
 #[derive(Deserialize, Serialize, Debug)]

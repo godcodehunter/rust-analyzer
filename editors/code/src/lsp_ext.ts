@@ -168,9 +168,9 @@ export enum RunKind {
 }
 
 export interface RunTestsParams {
-    include?: string[],
-    exclude?: string[],
-    runKind: RunKind,
+    include?: string[];
+    exclude?: string[];
+    runKind: RunKind;
 };
 
 export const runTests = new lc.RequestType<RunTestsParams, void, void>("experimental/runTests");
@@ -190,43 +190,43 @@ export enum RunStatusUpdateKind {
 export type RunStatusUpdate = (Started | Failed | Errored | Passed | RawOutput | Skiped | Finish)[];
 
 export interface Skiped {
-    kind: RunStatusUpdateKind.Skiped,
-    id: string,
+    kind: RunStatusUpdateKind.Skiped;
+    id: string;
 };
 
 export interface Finish {
-    kind: RunStatusUpdateKind.Finish,
+    kind: RunStatusUpdateKind.Finish;
 };
 
 export interface Started {
-    kind: RunStatusUpdateKind.Started,
-    id: string,
+    kind: RunStatusUpdateKind.Started;
+    id: string;
 };
 
 export interface Failed {
-    kind: RunStatusUpdateKind.Failed,
-    id: string,
-    message: TestMessage | TestMessage[],
-    duration: number,
+    kind: RunStatusUpdateKind.Failed;
+    id: string;
+    message: TestMessage | TestMessage[];
+    duration: number;
 };
 
 export interface Errored {
-    kind: RunStatusUpdateKind.Errored,
-    id: string,
-    message: TestMessage | TestMessage[],
-    duration: number,
+    kind: RunStatusUpdateKind.Errored;
+    id: string;
+    message: TestMessage | TestMessage[];
+    duration: number;
 };
 
 export interface Passed {
-    kind: RunStatusUpdateKind.Passed,
-    id: string,
-    duration: number,
+    kind: RunStatusUpdateKind.Passed;
+    id: string;
+    duration: number;
 };
 
 export interface RawOutput {
-    kind: RunStatusUpdateKind.RawOutput,
-    id: string,
-    message: string,
+    kind: RunStatusUpdateKind.RawOutput;
+    id: string;
+    message: string;
 };
 
 export const runStatus = new lc.NotificationType<RunStatusUpdate>("experimental/runStatusUpdate");

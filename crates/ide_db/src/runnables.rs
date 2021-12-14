@@ -2,7 +2,7 @@ use std::{borrow::BorrowMut, sync::Arc};
 
 use base_db::{FileId, SourceDatabase, SourceDatabaseExt, SourceRoot, Upcast, salsa};
 use either::Either;
-use hir::{self, Crate, Function, HasAttrs, HasSource, ModuleDef, Semantics, db::{AstDatabase, HirDatabase}};
+use hir::{self, Crate, Function, HasAttrs, HasSource, ModuleDef, Semantics, db::{AstDatabase, HirDatabase}, known::Default};
 use hir_def::FunctionLoc;
 use rayon::iter::IntoParallelRefIterator;
 use rustc_hash::FxHashMap;
@@ -108,8 +108,8 @@ impl RunnableView {
         let mut ret = None;
         Self::dfs(self, |it| {
             match (def, it) {
-                (DefKey::Function(key), RunnableView::Leaf(Runnable::Function(f))) => {
-                    if f.location == **key {
+                (DefKey::Function(key), RunnableView::Leaf(Runnable::Function(func))) => {
+                    if func.location == **key {
                         ret = Some(it);
                         return true
                     }
@@ -210,19 +210,13 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
 
     // Compares paths and returns [DifferencePoint] if they are not equvalent 
     fn find_diff_point(path: &MutalPath) -> Option<DifferencePoint> {
-        let mut iter = path.iter().enumerate().peekable();
-        loop {
-            let cur = iter.next().unwrap();
-            let peek = iter.peek();
-
-            if peek.is_none() {
-                return None;
-            }
-        
-            if peek.unwrap().1.accord.is_none() {
-                return Some(DifferencePoint(cur.0));
+        for item in path.into_iter().enumerate() {
+            if item.1.accord.is_none() {
+                return Some(DifferencePoint(item.0));
             }
         }
+
+        None
     }
 
     // Reconstructs [RunnableView] branch and maintains consistency [MutalPath] 
@@ -232,10 +226,10 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         dvg_point: &DifferencePoint
     ) {
         let mut borrowed = path.borrow_mut();
-        let mut last_sync = borrowed.iter_mut();
-        let init = last_sync.next().unwrap();
+        let mut iter = borrowed.iter_mut().skip(dvg_point.0 - 1);
+        let last_sync = iter.next().unwrap();
 
-        last_sync.fold(init, |cur: &mut Bijection, next: &mut Bijection| -> &mut Bijection {
+        iter.fold(last_sync, |cur: &mut Bijection, next: &mut Bijection| -> &mut Bijection {
             let node = Node::Module(Module{ 
                 location: *next.origin, 
                 content: Default::default(),
@@ -267,15 +261,56 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
 
         let mut walk_queue: VecDeque<_> = module.declarations(sema.db).into();
         while let Some(def) = walk_queue.pop_front() {
-            // if let ModuleDef::Module(submodule) = def {
-            //     if let hir::ModuleSource::Module(_) = submodule.definition_source(sema.db).value {
-            //         walk_queue.extend(submodule.declarations(sema.db));
-            //         submodule.impl_defs(sema.db).into_iter().for_each(|impl_| cb(db, sema, &mut path, Either::Right(impl_)));
-            //     }
-            // }
+            if let ModuleDef::Module(submodule) = def {
+                if let hir::ModuleSource::Module(_) = submodule.definition_source(sema.db).value {
+                    walk_queue.extend(submodule.declarations(sema.db));
+                }
+            }
             callback(db, sema, &mut path, Either::Left(def));
+            for impl_ in module.impl_defs(sema.db) {
+                callback(db, sema, &mut path, Either::Right(impl_))
+            }
         }
-        // module.impl_defs(sema.db).into_iter().for_each(|impl_| cb(db, sema, &mut path, Either::Right(impl_)));
+    }
+
+    fn store_runnables(root: &mut Option<RunnableView>, path: &RefCell<MutalPath>, runnables: &[Runnable]) {
+        let mut diff_point = find_diff_point(&path.borrow());
+        // Initialize root of view's path
+        if let Some(ref point) = diff_point {
+            if point.0 == 0 {
+                let mut borrowed = path.borrow_mut();
+                let mut first = borrowed.first_mut().unwrap();
+                
+                //If view empty, then initialize root node
+                root.replace(RunnableView::Node(Node::Module(Module{
+                    location: *first.origin,
+                    content: Default::default(),
+                })));
+
+                match root.as_mut().unwrap() {
+                    RunnableView::Node(Node::Module(m)) => first.accord = Some(m),
+                    _ => panic!(),
+                }
+
+                if borrowed.len() == 1 {
+                    diff_point = None;
+                } else {
+                    diff_point = Some(DifferencePoint(1));
+                }
+            }
+        }
+
+        if let Some(ref dvg_point) = diff_point {
+            syn_branches(path, dvg_point);
+        }
+        
+        let mut borrowed = path.borrow_mut();
+
+        unsafe {
+            let content = &mut (*borrowed.last_mut().unwrap().accord.unwrap()).content;
+            
+            content.extend(runnables.into_iter().map(|i| RunnableView::Leaf(i.clone())));
+        }
     }
 
     fn is_from_macro(db: &dyn HirDatabase, def: &ModuleDef) -> bool {
@@ -300,7 +335,9 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
             path: &RefCell<MutalPath>, 
             def: Either<hir::ModuleDef, hir::Impl>
         | {
-        let doctest = match def {
+        // TODO: vector of static size 2 on the stack 
+        let mut runnables = vec![];
+        if let Some(doctest) = match def {
             Either::Left(m) => match m {
                 ModuleDef::Module(i) => has_doctest(db.upcast(), i),
                 ModuleDef::Function(i) => has_doctest(db.upcast(), i),
@@ -312,30 +349,20 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
                 ModuleDef::TypeAlias(i) => has_doctest(db.upcast(), i),
                 ModuleDef::BuiltinType(i) => None,
             },
-            Either::Right(_impl) => todo!(), //has_doctest(db.upcast(), _impl),
-        };
-        let function = match def {
+            Either::Right(_impl) => has_doctest(db.upcast(), _impl),
+        } {
+            runnables.push(doctest);
+        }
+
+        if let Some(function) = match def {
             Either::Left(hir::ModuleDef::Function(it)) => runnable_fn(&sema, it),
             _ => None,
-        };
+        } {
+            runnables.push(function);
+        }
         
-        if doctest.is_some() || function.is_some() {
-            if let Some(ref dvg_point) = find_diff_point(&path.borrow()) {
-                syn_branches(path, dvg_point);
-            }
-            
-            let mut borrowed = path.borrow_mut();
-
-            unsafe {
-                let content = &mut (*borrowed.last_mut().unwrap().accord.unwrap()).content;
-            
-                if let Some(runnable) = function {
-                    content.push_back(runnable);
-                }
-                if let Some(runnable) = doctest {
-                    content.push_back(runnable);
-                }
-            }
+        if !runnables.is_empty() {
+            store_runnables(&mut res, path, &runnables);
         }
     });
 
@@ -450,16 +477,16 @@ fn runnable_mod_outline_definition(
 }
 
 /// Checks if item containe runnable in doc than create [Runnable] from it
-fn has_doctest<AtrOwner: HasAttrs>(db: &dyn HirDatabase, attrs_onwer: AtrOwner) -> Option<RunnableView> {
+fn has_doctest<AtrOwner: HasAttrs>(db: &dyn HirDatabase, attrs_onwer: AtrOwner) -> Option<Runnable> {
     if !is_contains_runnable_in_doc(&*attrs_onwer.attrs(db)) {
         return None;
     }
 
-    Some(RunnableView::Leaf(Runnable::Doctest(Doctest{ location: todo!() })))
+    Some(Runnable::Doctest(Doctest{ location: todo!() }))
 }
 
 /// Checks if a [hir::Function] is runnable and if it is, then construct [Runnable] from it 
-fn runnable_fn(sema: &Semantics, def: hir::Function) -> Option<RunnableView> {
+fn runnable_fn(sema: &Semantics, def: hir::Function) -> Option<Runnable> {
     let func = def.source(sema.db)?;
     let name_string = def.name(sema.db).to_string();
 
@@ -477,7 +504,7 @@ fn runnable_fn(sema: &Semantics, def: hir::Function) -> Option<RunnableView> {
         }
     };
 
-    Some(RunnableView::Leaf(Runnable::Function(RunnableFunc{ kind, location: def })))
+    Some(Runnable::Function(RunnableFunc{ kind, location: def }))
 }
 
 /// This is a method with a heuristics to support test methods annotated 

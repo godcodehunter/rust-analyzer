@@ -4,10 +4,10 @@ import { Ctx } from './ctx';
 import * as ra from './lsp_ext';
 import { RunStatusUpdate, RunStatusUpdateKind } from './lsp_ext';
 
-const iconsRootPath = path.join(path.dirname(__dirname), '..', 'resources', 'icons'); 
+const iconsRootPath = path.join(path.dirname(__dirname), '..', 'resources', 'icons');
 
 function getIconUri(iconName: string, theme: string): vscode.Uri {
-	return vscode.Uri.file(path.join(iconsRootPath, theme, `${iconName}.svg`));
+    return vscode.Uri.file(path.join(iconsRootPath, theme, `${iconName}.svg`));
 }
 
 /// Runnable.
@@ -24,28 +24,28 @@ enum NodeKind {
 type Session = Iterable<Package>;
 
 interface Package {
-    kind: NodeKind.Package,
-    id: string, 
-    name: string,
-    crates: Crate[],
-    location: string,
+    kind: NodeKind.Package;
+    id: string;
+    name: string;
+    crates: Crate[];
+    location: string;
 }
 
 interface Crate {
-    kind: NodeKind.Crate,
-    id: string, 
-    name: string,
-    modules: Module[], 
-    location: string,
+    kind: NodeKind.Crate;
+    id: string;
+    name: string;
+    modules: Module[];
+    location: string;
 }
 
 interface Module {
-    kind: NodeKind.Module,
-    id: string, 
-    name: string,
-    modules?: Module[], 
-    targets?: Function[],
-    location: string,
+    kind: NodeKind.Module;
+    id: string;
+    name: string;
+    modules?: Module[];
+    targets?: Function[];
+    location: string;
 }
 
 enum TestKind {
@@ -54,12 +54,12 @@ enum TestKind {
 }
 
 interface Function {
-    kind: NodeKind.Function,
-    id: string, 
-    name: string,
-    location: string,
-    range: [[number, number],[number, number]],
-    testKind: TestKind,
+    kind: NodeKind.Function;
+    id: string;
+    name: string;
+    location: string;
+    range: [[number, number], [number, number]];
+    testKind: TestKind;
 }
 
 /// The view synchronized with RA data by `DeltaUpdate`'s. The update is an array   
@@ -77,29 +77,29 @@ enum PatchKind {
 }
 
 interface Delete {
-    kind: PatchKind.Delete,
-    targetId: string,
-} 
+    kind: PatchKind.Delete;
+    targetId: string;
+}
 
 interface Update {
-    kind: PatchKind.Update,
-    targetId: string,
+    kind: PatchKind.Update;
+    targetId: string;
     payload: {
-        name?: string,
-        location?: string,
-        testKind?: TestKind,
-    },
+        name?: string;
+        location?: string;
+        testKind?: TestKind;
+    };
 }
 
 interface Create {
-    kind: PatchKind.Create,
-    targetId: string,
-    payload: Node,
+    kind: PatchKind.Create;
+    targetId: string;
+    payload: Node;
 }
 
-class Package extends vscode.TreeItem {  
+class Package extends vscode.TreeItem {
     constructor(
-        id: string, 
+        id: string,
         name: string,
         crates: Crate[],
         location: string,
@@ -115,16 +115,16 @@ class Package extends vscode.TreeItem {
         dark: getIconUri('squares', 'dark'),
     };
 
-    getChildren(): Crate[]{
+    getChildren(): Crate[] {
         return this.crates;
     }
 }
 
 class Crate extends vscode.TreeItem {
     constructor(
-        id: string, 
+        id: string,
         name: string,
-        modules: Module[], 
+        modules: Module[],
         location: string,
     ) {
         super(name, vscode.TreeItemCollapsibleState.Collapsed);
@@ -132,7 +132,7 @@ class Crate extends vscode.TreeItem {
         this.id = id;
         this.modules = modules;
     }
-    
+
     iconPath = {
         light: getIconUri('squares', 'dark'),
         dark: getIconUri('squares', 'dark'),
@@ -145,10 +145,10 @@ class Crate extends vscode.TreeItem {
 
 class Module extends vscode.TreeItem {
     constructor(
-        id: string, 
+        id: string,
         name: string,
         location: string,
-        modules?: Module[], 
+        modules?: Module[],
         targets?: Function[],
     ) {
         super(name, vscode.TreeItemCollapsibleState.Collapsed);
@@ -156,7 +156,7 @@ class Module extends vscode.TreeItem {
         this.modules = modules;
         this.targets = targets;
         this.id = id;
-    }   
+    }
 
     iconPath = {
         light: getIconUri('squares', 'dark'),
@@ -165,10 +165,10 @@ class Module extends vscode.TreeItem {
 
     getChildren(): (Function | Module)[] {
         var res: (Function | Module)[] = [];
-        if(this.targets != undefined) {
+        if (this.targets != undefined) {
             res.push(...this.targets);
         }
-        if(this.modules != undefined) {
+        if (this.modules != undefined) {
             res.push(...this.modules);
         }
         return res;
@@ -177,7 +177,7 @@ class Module extends vscode.TreeItem {
 
 class Function extends vscode.TreeItem {
     constructor(
-        id: string, 
+        id: string,
         name: string,
         location: string,
         kind: TestKind,
@@ -185,8 +185,8 @@ class Function extends vscode.TreeItem {
         super(name, vscode.TreeItemCollapsibleState.None);
         this.location = location;
         this.id = id;
-        
-        switch(kind) {
+
+        switch (kind) {
             case TestKind.Bench: {
                 this.iconPath = {
                     light: getIconUri('accelerator', 'dark'),
@@ -203,16 +203,16 @@ class Function extends vscode.TreeItem {
             }
         }
     }
-       
+
     getChildren(): null {
         return null;
-    }   
+    }
 }
 
 function bfs(root: Node, process: (parentField: Node[], node: Node) => void) {
-    let queue: Array<Node> = [root];
-    while(queue.length != 0) {
-        let current = queue.pop();
+    const queue: Array<Node> = [root];
+    while (queue.length != 0) {
+        const current = queue.pop();
         //@ts-ignore
         process(current);
         //@ts-ignore
@@ -221,17 +221,17 @@ function bfs(root: Node, process: (parentField: Node[], node: Node) => void) {
 }
 
 interface BfsContext {
-    isTerminate: boolean,
-    isSkipping: boolean,
-} 
+    isTerminate: boolean;
+    isSkipping: boolean;
+}
 
 function bfsTestItems(root: vscode.TestItem[], process: (node: vscode.TestItem, context: BfsContext) => void) {
-    let context: BfsContext = {isTerminate: false, isSkipping: false};
-    let queue: Array<vscode.TestItem> = root;
-    while(queue.length != 0 && !context.isTerminate) {
-        let current = queue.pop()!;
+    const context: BfsContext = { isTerminate: false, isSkipping: false };
+    const queue: Array<vscode.TestItem> = root;
+    while (queue.length != 0 && !context.isTerminate) {
+        const current = queue.pop()!;
         process(current, context);
-        if(context.isSkipping) {
+        if (context.isSkipping) {
             context.isSkipping = false;
             continue;
         }
@@ -243,18 +243,18 @@ export class TestDataProvider implements vscode.TreeDataProvider<Node> {
     private treeChangeEmitter: vscode.EventEmitter<Node | undefined> = new vscode.EventEmitter<Node | undefined>();
     readonly onDidChangeTreeData: vscode.Event<Node | undefined> = this.treeChangeEmitter.event;
     private tree: Node;
-    
+
     getChildren(element?: Node): vscode.ProviderResult<Node[]> {
-        if(element == undefined) {
-            return Promise.resolve([this.tree]); 
+        if (element == undefined) {
+            return Promise.resolve([this.tree]);
         }
-        
+
         return element.getChildren();
     }
-    
+
     getTreeItem(element: Node): Node {
         return element;
-    }   
+    }
 
     // getParent(element: Node): Node {
     //
@@ -274,29 +274,29 @@ export class TestDataProvider implements vscode.TreeDataProvider<Node> {
 
 export class RunnableDataProvider {
     handleCreate(node: Node, patch: Create) {
-        switch(node.kind) {
+        switch (node.kind) {
             case NodeKind.Package: {
                 if (patch.payload.kind != NodeKind.Crate) {
                     throw Error(`${patch.payload.kind} cant't be payload for ${NodeKind.Package} target`);
                 }
                 node.crates.push(patch.payload);
             }
-            break;
+                break;
             case NodeKind.Crate: {
                 if (patch.payload.kind != NodeKind.Module) {
                     throw Error(`${patch.payload.kind} cant't be payload for ${NodeKind.Crate} target`);
                 }
                 node.modules.push(patch.payload);
             }
-            break;
+                break;
             case NodeKind.Module: {
                 if (patch.payload.kind == NodeKind.Module) {
-                    if(node.modules == undefined) {
+                    if (node.modules == undefined) {
                         node.modules = [];
                     }
-                    node.modules!.push(patch.payload);
+                    node.modules.push(patch.payload);
                 } else if (patch.payload.kind == NodeKind.Function) {
-                    if(node.modules == undefined) {
+                    if (node.modules == undefined) {
                         node.modules = [];
                     }
                     node.targets!.push(patch.payload);
@@ -304,7 +304,7 @@ export class RunnableDataProvider {
                     throw Error(`${patch.payload.kind} cant't be payload for ${NodeKind.Module} target`);
                 }
             }
-            break;
+                break;
             case NodeKind.Function: {
                 throw Error("Function can't be a target for Create's patch");
             }
@@ -317,51 +317,51 @@ export class RunnableDataProvider {
     }
 
     handleUpdate(node: Node, patch: Update) {
-        switch(node.kind) {
+        switch (node.kind) {
             case NodeKind.Package: {
                 node.location = patch.payload.location!;
             }
-            break;
+                break;
             case NodeKind.Crate: {
-                node.location = patch.payload.location!; 
+                node.location = patch.payload.location!;
                 node.name = patch.payload.name!;
             }
-            break;
+                break;
             case NodeKind.Module: {
                 node.name = patch.payload.name!;
                 node.location = patch.payload.location!;
             }
-            break;
+                break;
             case NodeKind.Function: {
                 node.name = patch.payload.name!;
                 node.location = patch.payload.location!;
                 node.testKind = patch.payload.testKind!;
             }
-            break;
+                break;
         }
     }
 
     public applyUpdate(update: DeltaUpdate) {
-        for (let patch of update) {
+        for (const patch of update) {
             bfs(this.tree, (parentField, node) => {
-                if(node.id == patch.targetId) {
-                    switch(patch.kind) {
+                if (node.id == patch.targetId) {
+                    switch (patch.kind) {
                         case PatchKind.Create: {
                             this.handleCreate(node, patch);
                         }
-                        break;
+                            break;
                         case PatchKind.Delete: {
-                            this.handleDelete(node, parentField)
+                            this.handleDelete(node, parentField);
                         }
-                        break;
+                            break;
                         case PatchKind.Update: {
-                            this.handleUpdate(node, patch)
+                            this.handleUpdate(node, patch);
                         }
-                        break;
+                            break;
                     }
                 }
-            })
-        }  
+            });
+        }
         // this.treeChangeEmitter.fire(/* TODO */);
     }
 }
@@ -376,11 +376,11 @@ class TestRunControler {
 
     constructor(ctx: Ctx) {
         this.client = ctx.client;
-        this.emitter = new vscode.EventEmitter<RunStatusUpdate>()
-        this.onStatusUpdate = this.emitter.event
+        this.emitter = new vscode.EventEmitter<RunStatusUpdate>();
+        this.onStatusUpdate = this.emitter.event;
         this.client.onNotification(ra.runStatus, this.emitter.fire);
     }
-    
+
     /**
      * Subscription function that accepts a callback that fires when an event occurs.
      */
@@ -400,9 +400,9 @@ class TestRunControler {
      * @param runKind 
      */
     async execute(include: string[] | undefined, exclude: string[] | undefined, runKind: ra.RunKind) {
-        this.client.sendRequest(ra.runTests, {include, exclude, runKind});
+        this.client.sendRequest(ra.runTests, { include, exclude, runKind });
     }
-    
+
     /**
      * Interrupts current run
      */
@@ -417,16 +417,16 @@ export class TestExplorerProvider {
     private testExecutor: TestRunControler;
     private runProfile: vscode.TestRunProfile;
     private debugProfile: vscode.TestRunProfile;
-    
+
     /// Crawls the test's tree and find node's field that contain item with passed id.
     findItem(id: string): [vscode.TestItem, vscode.TestItemCollection] | null {
-        let buff: vscode.TestItem[] = [];
+        const buff: vscode.TestItem[] = [];
         this.controller.items.forEach(i => buff.push(i));
         let holder = null;
-        while(!holder && buff.length != 0) {
-            let current = buff.pop()!;
+        while (!holder && buff.length != 0) {
+            const current = buff.pop()!;
             current.children.forEach((item, collection) => {
-                if(item.id == id) {
+                if (item.id == id) {
                     holder = collection;
                 }
                 buff.push(item);
@@ -437,96 +437,96 @@ export class TestExplorerProvider {
 
     /// Maps Node to TestItem
     convert(node: Node) {
-        let uri = vscode.Uri.file(node.location);
+        const uri = vscode.Uri.file(node.location);
         return this.controller.createTestItem(node.id, node.label as string, uri);
     }
 
     async updateBranch(branchRoot: Node | void | null | undefined) {
-        let queue: [Node, vscode.TestItem][] = [];
+        const queue: [Node, vscode.TestItem][] = [];
         if (branchRoot == undefined || branchRoot == null) {
-            let childrens = await this.treeDataProvider.getChildren();
+            const childrens = await this.treeDataProvider.getChildren();
             if (childrens) {
-                let binded: [Node, vscode.TestItem][] = [];
-                for(let child of childrens) {
-                    let item = this.convert(child);
+                const binded: [Node, vscode.TestItem][] = [];
+                for (const child of childrens) {
+                    const item = this.convert(child);
                     binded.push([child, item]);
                 }
                 this.controller.items.replace(binded.map(i => i[1]));
                 queue.push(...binded);
             }
         } else {
-            let [_, collection] = this.findItem(branchRoot.id)!;
-            let item = this.convert(branchRoot);
+            const [_, collection] = this.findItem(branchRoot.id)!;
+            const item = this.convert(branchRoot);
             collection.add(item);
             queue.push([branchRoot, item]);
         }
 
-        while(queue.length != 0) {
-            let current = queue.pop()!;
-            let childrens = current[0].getChildren();
+        while (queue.length != 0) {
+            const current = queue.pop()!;
+            const childrens = current[0].getChildren();
             if (childrens) {
-                let binded: [Node, vscode.TestItem][] = [];
-                for(let child of childrens) {
-                    let item = this.convert(child);
+                const binded: [Node, vscode.TestItem][] = [];
+                for (const child of childrens) {
+                    const item = this.convert(child);
                     binded.push([child, item]);
                 }
                 current[1].children.replace(binded.map(i => i[1]));
                 queue.push(...binded);
-            } 
+            }
         }
     }
 
     handleRunRequest(request: vscode.TestRunRequest, token: vscode.CancellationToken) {
         token.onCancellationRequested(() => this.testExecutor.cancel());
 
-        let run = this.controller.createTestRun(request, undefined, true);
+        const run = this.controller.createTestRun(request, undefined, true);
 
-        let queue: vscode.TestItem[] = [];
+        const queue: vscode.TestItem[] = [];
         if (request.include) {
             request.include.forEach(test => queue.push(test));
         } else {
             this.controller.items.forEach(test => queue.push(test));
         }
-        
-        bfsTestItems(queue, (test, context) => { 
+
+        bfsTestItems(queue, (test, context) => {
             context.isTerminate = token.isCancellationRequested;
 
-            if(request.exclude?.includes(test)) {
+            if (request.exclude?.includes(test)) {
                 context.isSkipping = true;
             } else {
                 run.enqueued(test);
             }
         });
-        
+
         this.testExecutor.onStatusUpdate((updates) => {
-            for(let update of updates) {
-                switch(update.kind) {
+            for (const update of updates) {
+                switch (update.kind) {
                     case RunStatusUpdateKind.RawOutput: {
                         run.appendOutput(update.message);
                         break;
                     }
                     case RunStatusUpdateKind.Skiped: {
-                        let [item, _] = this.findItem(update.id)!;
+                        const [item, _] = this.findItem(update.id)!;
                         run.skipped(item);
                         break;
                     }
                     case RunStatusUpdateKind.Errored: {
-                        let [item, _] = this.findItem(update.id)!;
+                        const [item, _] = this.findItem(update.id)!;
                         run.errored(item, update.message, update.duration);
                         break;
                     }
                     case RunStatusUpdateKind.Failed: {
-                        let [item, _] = this.findItem(update.id)!;
+                        const [item, _] = this.findItem(update.id)!;
                         run.failed(item, update.message, update.duration);
                         break;
                     }
                     case RunStatusUpdateKind.Passed: {
-                        let [item, _] = this.findItem(update.id)!;
+                        const [item, _] = this.findItem(update.id)!;
                         run.passed(item, update.duration);
                         break;
                     }
                     case RunStatusUpdateKind.Started: {
-                        let [item, _] = this.findItem(update.id)!;
+                        const [item, _] = this.findItem(update.id)!;
                         run.started(item);
                         break;
                     }
@@ -538,8 +538,8 @@ export class TestExplorerProvider {
             }
         });
 
-        let kind: ra.RunKind = (() => {
-            switch(request.profile) {
+        const kind: ra.RunKind = (() => {
+            switch (request.profile) {
                 case this.runProfile:
                     return ra.RunKind.Run;
                 case this.debugProfile:
@@ -549,8 +549,8 @@ export class TestExplorerProvider {
             }
         })()!;
 
-        let includedIds = request.include?.map(i => i.id);
-        let excludeIds = request.exclude?.map(i => i.id);
+        const includedIds = request.include?.map(i => i.id);
+        const excludeIds = request.exclude?.map(i => i.id);
         this.testExecutor.execute(includedIds, excludeIds, kind);
     }
 
