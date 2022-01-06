@@ -129,15 +129,16 @@ impl RunnableView {
     }
 
     // Just DFS algorithm, that accepts tree root and handler function.
-    // Handler function return true for continue crawling or false for stop it. 
+    // Handler function return false for continue crawling or true for stop it. 
     fn dfs<'a>(root: &'a RunnableView, mut handler: impl FnMut(&'a RunnableView) -> bool) {
         let mut buff = vec![root];
         while let Some(item) = buff.pop() {
             match item {
                 RunnableView::Node(Node::Module(m)) => buff.extend(m.content.iter()),
                 RunnableView::Node(Node::MacroCall(mc)) => buff.extend(mc.content.iter()),
-                _ => if handler(item) {break},
+                _ =>{},
             }   
+            if handler(item) {break}
         }
     }
 
@@ -257,18 +258,40 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         };
         
         let mut path = RefCell::new(MutalPath::new());
-        path.borrow_mut().push(Bijection { origin: &module, accord: None});
 
-        let mut walk_queue: VecDeque<_> = module.declarations(sema.db).into();
-        while let Some(def) = walk_queue.pop_front() {
-            if let ModuleDef::Module(submodule) = def {
-                if let hir::ModuleSource::Module(_) = submodule.definition_source(sema.db).value {
-                    walk_queue.extend(submodule.declarations(sema.db));
+        let declarations = module.declarations(sema.db);
+        if declarations.is_empty() {
+            return;
+        }
+        path.borrow_mut().push(Bijection { origin: &module, accord: None});
+        let mut walk_queue: Vec<(&hir::Module, Vec<ModuleDef>)> = vec![(&module, declarations)];
+
+        while let Some((parent, childrens)) = walk_queue.first_mut() {
+            let defenition = childrens.pop().unwrap();
+            
+            if let ModuleDef::Module(module) = defenition {
+                if let hir::ModuleSource::Module(_) = module.definition_source(sema.db).value {
+                    path.borrow_mut().push(Bijection { origin: &module, accord: None});
+                    walk_queue.push((&module, module.declarations(sema.db)));
                 }
             }
-            callback(db, sema, &mut path, Either::Left(def));
-            for impl_ in module.impl_defs(sema.db) {
-                callback(db, sema, &mut path, Either::Right(impl_))
+
+            // The path on top must contain a parent if the path contains a different node 
+            // then we crawl another branch. So, for getting the actual path we should 
+            // drop old parts. 
+            while &path.borrow_mut().first().unwrap().origin != parent {
+                path.borrow_mut().pop();
+            }
+          
+            callback(db, sema, &mut path, Either::Left(defenition));  
+            if let ModuleDef::Module(module) = defenition {
+                for impl_ in module.impl_defs(sema.db) {
+                    callback(db, sema, &mut path, Either::Right(impl_))
+                }
+            }
+
+            if childrens.is_empty() {
+                let node = walk_queue.pop().unwrap().0;
             }
         }
     }
@@ -277,11 +300,11 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         let mut diff_point = find_diff_point(&path.borrow());
         // Initialize root of view's path
         if let Some(ref point) = diff_point {
+            //If view empty, then initialize root node
             if point.0 == 0 {
                 let mut borrowed = path.borrow_mut();
                 let mut first = borrowed.first_mut().unwrap();
                 
-                //If view empty, then initialize root node
                 root.replace(RunnableView::Node(Node::Module(Module{
                     location: *first.origin,
                     content: Default::default(),
@@ -289,7 +312,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
 
                 match root.as_mut().unwrap() {
                     RunnableView::Node(Node::Module(m)) => first.accord = Some(m),
-                    _ => panic!(),
+                    _ => unreachable!(),
                 }
 
                 if borrowed.len() == 1 {

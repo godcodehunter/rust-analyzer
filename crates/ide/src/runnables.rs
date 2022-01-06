@@ -105,7 +105,12 @@ impl Runnable {
 impl Runnable {
     pub fn from_db_repr(db: &RootDatabase, sema: &Semantics, runnable: &ide_db::runnables::RunnableView) -> Self {
         match runnable {
-            ide_db::runnables::RunnableView::Node(n) => Self::from_mod(db, sema, n),
+            ide_db::runnables::RunnableView::Node(n) => {
+                match n {
+                    ide_db::runnables::Node::MacroCall(_) => todo!(),
+                    ide_db::runnables::Node::Module(module) => Self::from_mod(db, sema, module),
+                }
+            },
             ide_db::runnables::RunnableView::Leaf(l) => {
                 match l {
                     ide_db::runnables::Runnable::Function(i) => Self::from_fn(db, sema, i),
@@ -115,23 +120,23 @@ impl Runnable {
         }
     }
     
-    fn from_mod(db: &RootDatabase, sema: &Semantics, def: &ide_db::runnables::Node) -> Runnable {
-        // let path = 
-        //     def.location.path_to_root(sema.db).into_iter().rev().filter_map(|it| it.name(sema.db)).join("::");
-        // let cfg = def.location.attrs(sema.db).cfg();
-        // let nav = NavigationTarget::from_module_to_decl(db, def.location);
-        // Runnable { 
-        //     use_name_in_title: false, 
-        //     nav, 
-        //     kind: RunnableKind::TestMod { path }, 
-        //     cfg 
-        // }
-        todo!()
+    fn from_mod(db: &RootDatabase, sema: &Semantics, def: &ide_db::runnables::Module) -> Runnable {
+        let path = 
+            def.location.path_to_root(sema.db).into_iter().rev().filter_map(|it| it.name(sema.db)).join("::");
+        let cfg = def.location.attrs(sema.db).cfg();
+        let nav = NavigationTarget::from_module_to_decl(db, def.location);
+        Runnable { 
+            use_name_in_title: false, 
+            nav, 
+            kind: RunnableKind::TestMod { path }, 
+            cfg 
+        }
     }
     
     fn from_fn(db: &RootDatabase, sema: &Semantics, def: &ide_db::runnables::RunnableFunc) -> Runnable {
         let cfg = def.location.attrs(db.upcast()).cfg();
         // #[test/bench] expands to just the item causing us to lose the attribute, so recover them by going out of the attribute
+        // TODO: unwrap can call panic 
         let func = def.location.source(sema.db).unwrap().node_with_attributes(db.upcast());
         let nav = NavigationTarget::from_named(
             db,
