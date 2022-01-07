@@ -199,12 +199,12 @@ fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> Arc<CrateRunnable
 }
 
 fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<RunnableView>> {
-    struct Bijection<'origin> {
-        origin: &'origin hir::Module, 
+    struct Bijection {
+        origin: hir::Module, 
         accord: Option<*mut Module>,
     }
 
-    type MutalPath<'origin> = Vec<Bijection<'origin>>;
+    type MutalPath = Vec<Bijection>;
 
     // Represents the point from which paths begin to differ
     struct DifferencePoint(usize);
@@ -222,8 +222,8 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
 
     // Reconstructs [RunnableView] branch and maintains consistency [MutalPath] 
     // in the process.
-    fn syn_branches<'path, 'origin>(
-        path: &'path RefCell<MutalPath<'origin>>, 
+    fn syn_branches<'path>(
+        path: &'path RefCell<MutalPath>, 
         dvg_point: &DifferencePoint
     ) {
         let mut borrowed = path.borrow_mut();
@@ -232,7 +232,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
 
         iter.fold(last_sync, |cur: &mut Bijection, next: &mut Bijection| -> &mut Bijection {
             let node = Node::Module(Module{ 
-                location: *next.origin, 
+                location: next.origin, 
                 content: Default::default(),
             });
             unsafe {
@@ -263,23 +263,30 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         if declarations.is_empty() {
             return;
         }
-        path.borrow_mut().push(Bijection { origin: &module, accord: None});
-        let mut walk_queue: Vec<(&hir::Module, Vec<ModuleDef>)> = vec![(&module, declarations)];
+        path.borrow_mut().push(Bijection { origin: module, accord: None});
+        let mut walk_queue: Vec<(hir::Module, Vec<ModuleDef>)> = vec![(module, declarations)];
 
-        while let Some((parent, childrens)) = walk_queue.first_mut() {
+        while let Some((parent, childrens)) = walk_queue.first_mut(){
+            let parent = parent.clone();
             let defenition = childrens.pop().unwrap();
+            if childrens.is_empty() {
+                walk_queue.pop().unwrap().0;
+            }
             
             if let ModuleDef::Module(module) = defenition {
                 if let hir::ModuleSource::Module(_) = module.definition_source(sema.db).value {
-                    path.borrow_mut().push(Bijection { origin: &module, accord: None});
-                    walk_queue.push((&module, module.declarations(sema.db)));
+                    path.borrow_mut().push(Bijection { origin: module, accord: None});
+                    let declartions = module.declarations(sema.db);
+                    if !declartions.is_empty() {
+                        walk_queue.push((module, declartions));
+                    }
                 }
             }
 
             // The path on top must contain a parent if the path contains a different node 
             // then we crawl another branch. So, for getting the actual path we should 
             // drop old parts. 
-            while &path.borrow_mut().first().unwrap().origin != parent {
+            while path.borrow_mut().first().unwrap().origin != parent {
                 path.borrow_mut().pop();
             }
           
@@ -288,10 +295,6 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
                 for impl_ in module.impl_defs(sema.db) {
                     callback(db, sema, &mut path, Either::Right(impl_))
                 }
-            }
-
-            if childrens.is_empty() {
-                let node = walk_queue.pop().unwrap().0;
             }
         }
     }
@@ -306,7 +309,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
                 let mut first = borrowed.first_mut().unwrap();
                 
                 root.replace(RunnableView::Node(Node::Module(Module{
-                    location: *first.origin,
+                    location: first.origin,
                     content: Default::default(),
                 })));
 
