@@ -266,27 +266,17 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         path.borrow_mut().push(Bijection { origin: module, accord: None});
         let mut walk_queue: Vec<(hir::Module, Vec<ModuleDef>)> = vec![(module, declarations)];
 
-        while let Some((parent, childrens)) = walk_queue.first_mut(){
+        while let Some((parent, childrens)) = walk_queue.last_mut(){
             let parent = parent.clone();
             let defenition = childrens.pop().unwrap();
             if childrens.is_empty() {
                 walk_queue.pop().unwrap().0;
             }
             
-            if let ModuleDef::Module(module) = defenition {
-                if let hir::ModuleSource::Module(_) = module.definition_source(sema.db).value {
-                    path.borrow_mut().push(Bijection { origin: module, accord: None});
-                    let declartions = module.declarations(sema.db);
-                    if !declartions.is_empty() {
-                        walk_queue.push((module, declartions));
-                    }
-                }
-            }
-
-            // The path on top must contain a parent if the path contains a different node 
+            // The end of path must be parent if the path end is different node 
             // then we crawl another branch. So, for getting the actual path we should 
             // drop old parts. 
-            while path.borrow_mut().first().unwrap().origin != parent {
+            while path.borrow_mut().last().unwrap().origin != parent {
                 path.borrow_mut().pop();
             }
           
@@ -294,6 +284,16 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
             if let ModuleDef::Module(module) = defenition {
                 for impl_ in module.impl_defs(sema.db) {
                     callback(db, sema, &mut path, Either::Right(impl_))
+                }
+            }
+
+            if let ModuleDef::Module(module) = defenition {
+                if let hir::ModuleSource::Module(_) = module.definition_source(sema.db).value {
+                    let declartions = module.declarations(sema.db);
+                    if !declartions.is_empty() {
+                        path.borrow_mut().push(Bijection { origin: module, accord: None});
+                        walk_queue.push((module, declartions));
+                    }
                 }
             }
         }
