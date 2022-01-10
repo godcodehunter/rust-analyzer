@@ -142,13 +142,17 @@ impl RunnableView {
         }
     }
 
-    pub fn flatten(&self) -> Vec<&RunnableView> {
+    // Returns an iterator over the contents of a file. 
+    // Note: not including the root of the file.
+    pub fn flatten_content(&self) -> impl Iterator<Item = &RunnableView> {
         let mut res = Vec::new();
         Self::dfs(self, |i| {
-            res.push(i);
+            if i != self {
+                res.push(i);
+            }
             false
         });
-        res
+        res.into_iter()
     }
 }
 
@@ -299,21 +303,21 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         }
     }
 
-    fn store_runnables(root: &mut Option<RunnableView>, path: &RefCell<MutalPath>, runnables: &[Runnable]) {
+    fn store_runnables(res: &mut Option<RunnableView>, path: &RefCell<MutalPath>, runnables: &[Runnable]) {
         let mut diff_point = find_diff_point(&path.borrow());
-        // Initialize root of view's path
+        
+        // If result runnable view is empty, then initialize it's root node
         if let Some(ref point) = diff_point {
-            //If view empty, then initialize root node
             if point.0 == 0 {
                 let mut borrowed = path.borrow_mut();
                 let mut first = borrowed.first_mut().unwrap();
                 
-                root.replace(RunnableView::Node(Node::Module(Module{
+                res.replace(RunnableView::Node(Node::Module(Module{
                     location: first.origin,
                     content: Default::default(),
                 })));
 
-                match root.as_mut().unwrap() {
+                match res.as_mut().unwrap() {
                     RunnableView::Node(Node::Module(m)) => first.accord = Some(m),
                     _ => unreachable!(),
                 }

@@ -185,7 +185,7 @@ pub(crate) fn runnables(db: &RootDatabase, file_id: FileId) -> Vec<Runnable> {
     let rundb: &dyn RunnableDatabase = db.upcast();
     let sema = Semantics::new(db);
     if let Some(view) = rundb.file_runnables(file_id) {
-        return view.flatten().into_iter().map(|i| Runnable::from_db_repr(db, &sema, i)).collect();
+        view.flatten_content().map(|i| Runnable::from_db_repr(db, &sema, i)).collect()
     } else {
         Default::default()
     }
