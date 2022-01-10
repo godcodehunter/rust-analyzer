@@ -227,11 +227,10 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
     // Reconstructs [RunnableView] branch and maintains consistency [MutalPath] 
     // in the process.
     fn syn_branches<'path>(
-        path: &'path RefCell<MutalPath>, 
+        path: &'path mut MutalPath, 
         dvg_point: &DifferencePoint
     ) {
-        let mut borrowed = path.borrow_mut();
-        let mut iter = borrowed.iter_mut().skip(dvg_point.0 - 1);
+        let mut iter = path.iter_mut().skip(dvg_point.0 - 1);
         let last_sync = iter.next().unwrap();
 
         iter.fold(last_sync, |cur: &mut Bijection, next: &mut Bijection| -> &mut Bijection {
@@ -254,20 +253,20 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         db: &dyn RunnableDatabase,
         sema: &Semantics,
         file_id: FileId,
-        mut callback: impl FnMut(&RunnableDatabase, &Semantics, &RefCell<MutalPath>, Either<hir::ModuleDef, hir::Impl>),
+        mut callback: impl FnMut(&RunnableDatabase, &Semantics, &mut MutalPath, Either<hir::ModuleDef, hir::Impl>),
     ) {
         let module = match sema.to_module_def(file_id) {
             Some(it) => it,
             None => return,
         };
         
-        let mut path = RefCell::new(MutalPath::new());
+        let mut path = MutalPath::new();
 
         let declarations = module.declarations(sema.db);
         if declarations.is_empty() {
             return;
         }
-        path.borrow_mut().push(Bijection { origin: module, accord: None});
+        path.push(Bijection { origin: module, accord: None});
         let mut walk_queue: Vec<(hir::Module, Vec<ModuleDef>)> = vec![(module, declarations)];
 
         while let Some((parent, childrens)) = walk_queue.last_mut(){
@@ -280,8 +279,8 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
             // The end of path must be parent if the path end is different node 
             // then we crawl another branch. So, for getting the actual path we should 
             // drop old parts. 
-            while path.borrow_mut().last().unwrap().origin != parent {
-                path.borrow_mut().pop();
+            while path.last().unwrap().origin != parent {
+                path.pop();
             }
           
             callback(db, sema, &mut path, Either::Left(defenition));  
@@ -295,7 +294,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
                 if let hir::ModuleSource::Module(_) = module.definition_source(sema.db).value {
                     let declartions = module.declarations(sema.db);
                     if !declartions.is_empty() {
-                        path.borrow_mut().push(Bijection { origin: module, accord: None});
+                        path.push(Bijection { origin: module, accord: None});
                         walk_queue.push((module, declartions));
                     }
                 }
@@ -303,14 +302,13 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         }
     }
 
-    fn store_runnables(res: &mut Option<RunnableView>, path: &RefCell<MutalPath>, runnables: &[Runnable]) {
-        let mut diff_point = find_diff_point(&path.borrow());
+    fn store_runnables(res: &mut Option<RunnableView>, path: &mut MutalPath, runnables: &[Runnable]) {
+        let mut diff_point = find_diff_point(path);
         
         // If result runnable view is empty, then initialize it's root node
         if let Some(ref point) = diff_point {
             if point.0 == 0 {
-                let mut borrowed = path.borrow_mut();
-                let mut first = borrowed.first_mut().unwrap();
+                let mut first = path.first_mut().unwrap();
                 
                 res.replace(RunnableView::Node(Node::Module(Module{
                     location: first.origin,
@@ -322,7 +320,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
                     _ => unreachable!(),
                 }
 
-                if borrowed.len() == 1 {
+                if path.len() == 1 {
                     diff_point = None;
                 } else {
                     diff_point = Some(DifferencePoint(1));
@@ -334,10 +332,8 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
             syn_branches(path, dvg_point);
         }
         
-        let mut borrowed = path.borrow_mut();
-
         unsafe {
-            let content = &mut (*borrowed.last_mut().unwrap().accord.unwrap()).content;
+            let content = &mut (*path.last_mut().unwrap().accord.unwrap()).content;
             
             content.extend(runnables.into_iter().map(|i| RunnableView::Leaf(i.clone())));
         }
@@ -362,7 +358,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         |
             db: &dyn RunnableDatabase, 
             sema: &Semantics, 
-            path: &RefCell<MutalPath>, 
+            path: &mut MutalPath, 
             def: Either<hir::ModuleDef, hir::Impl>
         | {
         // TODO: vector of static size 2 on the stack 
