@@ -1,16 +1,11 @@
-use std::{borrow::BorrowMut, sync::Arc};
+use std::sync::Arc;
 
-use base_db::{FileId, SourceDatabase, SourceDatabaseExt, SourceRoot, Upcast, salsa};
+use base_db::{FileId, SourceDatabaseExt, SourceRoot, Upcast, salsa};
 use either::Either;
-use hir::{self, Crate, Function, HasAttrs, HasSource, ModuleDef, Semantics, db::{AstDatabase, HirDatabase}, known::Default};
-use hir_def::FunctionLoc;
-use rayon::iter::IntoParallelRefIterator;
+use hir::{self, Crate, Function, HasAttrs, HasSource, ModuleDef, Semantics, db::HirDatabase};
 use rustc_hash::FxHashMap;
-use stdx::{always, format_to};
 use syntax::{AstNode, TextRange, ast::{self, HasAttrs as _}};
-use crate::helpers::visit_file_defs;
-use std::collections::{LinkedList, VecDeque};
-use std::cell::RefCell;
+use std::collections::LinkedList;
 
 /// Defines the kind of [RunnableFunc]
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -72,6 +67,33 @@ pub enum Node {
     MacroCall(MacroCall),
     Module(Module),
 }
+
+pub type Id = usize;
+
+// trait ChangeObserver<T, U> {
+//     fn delete(&mut self, target: &T, item: &T);
+//     fn append(&mut self, target: &T, item: &T);
+//     fn update(&mut self, target: &T, update: U);
+// }
+
+// struct DeltaSynchronizer {
+//     patch: rust_analyzer::lsp_ext::Patch,
+// }
+
+// impl ChangeObserver<RunnableView, > for DeltaSynchronizer {
+//     fn delete(&mut self, target: &RunnableView, item: &RunnableView) {
+//         self.patch.delete.push(item as usize);
+//     }
+
+//     fn append(&mut self, target: &RunnableView, item: &RunnableView) {
+//         todo!()
+//     }
+
+//     fn update(&mut self,) {
+//         todo!()
+//     }
+// }
+
 
 /// We can think about that tree as of a representation a partial view from AST. 
 /// The main purpose why we need a partial view is that reduce the 
@@ -153,6 +175,10 @@ impl RunnableView {
             false
         });
         res.into_iter()
+    }
+
+    pub fn get_by_id(&self, id: Id) -> Option<&RunnableView> {
+        todo!()
     }
 }
 
@@ -253,7 +279,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
         db: &dyn RunnableDatabase,
         sema: &Semantics,
         file_id: FileId,
-        mut callback: impl FnMut(&RunnableDatabase, &Semantics, &mut MutalPath, Either<hir::ModuleDef, hir::Impl>),
+        mut callback: impl FnMut(&dyn RunnableDatabase, &Semantics, &mut MutalPath, Either<hir::ModuleDef, hir::Impl>),
     ) {
         let module = match sema.to_module_def(file_id) {
             Some(it) => it,
@@ -373,7 +399,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Arc<Runn
                 ModuleDef::Static(i) => has_doctest(db.upcast(), i),
                 ModuleDef::Trait(i) => has_doctest(db.upcast(), i),
                 ModuleDef::TypeAlias(i) => has_doctest(db.upcast(), i),
-                ModuleDef::BuiltinType(i) => None,
+                ModuleDef::BuiltinType(_) => None,
             },
             Either::Right(_impl) => has_doctest(db.upcast(), _impl),
         } {

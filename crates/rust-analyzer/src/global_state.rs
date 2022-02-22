@@ -29,7 +29,13 @@ use crate::{
     thread_pool::TaskPool,
     to_proto::url_from_abs_path,
     Result,
+    executor::Executor,
 };
+
+#[derive(Hash, PartialEq, Eq)]
+pub enum FollowedData {
+    TestsView,
+}
 
 // Enforces drop order
 pub(crate) struct Handle<H, C> {
@@ -103,6 +109,9 @@ pub(crate) struct GlobalState {
         OpQueue<(Arc<Vec<ProjectWorkspace>>, Vec<anyhow::Result<WorkspaceBuildScripts>>)>,
 
     pub(crate) prime_caches_queue: OpQueue<()>,
+
+    pub(crate) followed_data: std::collections::HashSet<FollowedData>,
+    pub(crate) executor: Executor<_>,
 }
 
 /// An immutable snapshot of the world's state at a point in time.
@@ -166,6 +175,8 @@ impl GlobalState {
             prime_caches_queue: OpQueue::default(),
 
             fetch_build_data_queue: OpQueue::default(),
+            executor: Executor::new(todo!()),
+            followed_data: Default::default(),
         };
         // Apply any required database inputs from the config.
         this.update_configuration(config);

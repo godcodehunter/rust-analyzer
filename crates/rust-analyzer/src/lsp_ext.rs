@@ -1,6 +1,6 @@
 //! rust-analyzer extensions to the LSP.
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::{HashMap, HashSet}, path::PathBuf};
 
 use lsp_types::request::Request;
 use lsp_types::{
@@ -528,6 +528,7 @@ pub struct CompletionImport {
     pub full_import_path: String,
     pub imported_name: String,
 }
+
 // Request for derive selected data and do subscribes to their changes
 pub enum SubscriptionRequest {}
 
@@ -536,9 +537,21 @@ pub struct ClientCommandOptions {
     pub commands: Vec<String>,
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+pub struct SubscriptionError {
+    pub describtion: String,
+    pub targets: HashSet<String>
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct SubscriptionResponce {
+    pub errors: Vec<SubscriptionError>,
+    pub success: HashSet<String>,
+}
+
 impl Request for SubscriptionRequest {
     type Params = SubscriptionRequestParams;
-    type Result = String;
+    type Result = SubscriptionResponce;
     const METHOD: &'static str = "rust-analyzer/subscription";
 }
 
@@ -636,6 +649,7 @@ struct Skiped {
 #[serde(rename_all = "camelCase")]
 struct Finish {
     kind: UpdateKind,
+    id: String,
 }
 
 #[derive(Deserialize, Serialize, Debug)]

@@ -42,11 +42,13 @@ use crate::{
     line_index::LineEndings,
     lsp_ext::{
         self, InlayHint, InlayHintsParams, PositionOrRange, ViewCrateGraphParams,
-        WorkspaceSymbolParams,
+        WorkspaceSymbolParams, SubscriptionResponce, SubscriptionError,
     },
     lsp_utils::{all_edits_are_disjoint, invalid_params_error},
     to_proto, LspError, Result,
 };
+use std::collections::HashSet;
+use crate::global_state::FollowedData;
 
 pub(crate) fn handle_analyzer_status(
     snap: GlobalStateSnapshot,
@@ -84,6 +86,75 @@ pub(crate) fn handle_analyzer_status(
             .unwrap_or_else(|_| "Analysis retrieval was cancelled".to_owned()),
     );
     Ok(buf)
+}
+
+pub(crate) fn handle_subscription(
+    state: &mut GlobalState, 
+    params: lsp_ext::SubscriptionRequestParams,
+) -> Result<SubscriptionResponce> {
+    let mut unknown = HashSet::new();
+    let mut already_sync = HashSet::new();
+    let mut multiple = HashSet::new();
+    let mut success = HashSet::new();
+
+    for item in params.data_objects {
+        match item.as_str() {
+            "tests_view" => {
+                if state.followed_data.insert(FollowedData::TestsView) {
+                    if success.get(&item).is_none() {
+                        success.insert(item);
+                        
+                    } else {
+                        multiple.insert(item);
+                    }
+                } else {
+                    if already_sync.get(&item).is_none() {
+                        already_sync.insert(item);
+                    } else {
+                        multiple.insert(item);
+                    }
+                }
+            },
+            _ => {
+                if unknown.get(&item).is_none() {
+                    unknown.insert(item);
+                } else {
+                    multiple.insert(item); 
+                }
+            },
+        }
+    }
+
+    let mut errors = Vec::new();
+    if !unknown.is_empty() {
+        errors.push(SubscriptionError{
+            describtion: "Unknown views".to_string(),
+            targets: unknown,
+        });
+    }
+
+    if !already_sync.is_empty() {
+        errors.push(SubscriptionError{
+            describtion: "Views already synchronized".to_string(),
+            targets: already_sync,
+        });
+    }
+   
+    if !multiple.is_empty() {
+        errors.push(SubscriptionError{
+            describtion: "Repeated multiple times".to_string(),
+            targets: multiple,
+        });
+    }
+
+    Ok(SubscriptionResponce {
+        errors,
+        success,
+    })
+}
+
+pub(crate) fn handle_unsubscription() {
+    
 }
 
 pub(crate) fn handle_memory_usage(state: &mut GlobalState, _: ()) -> Result<String> {

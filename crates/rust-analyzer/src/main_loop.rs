@@ -553,6 +553,7 @@ impl GlobalState {
         }
 
         RequestDispatcher { req: Some(req), global_state: self }
+            .on_sync_mut::<lsp_ext::SubscriptionRequest>(handlers::handle_subscription)?
             .on_sync_mut::<lsp_ext::ReloadWorkspace>(|s, ()| {
                 s.fetch_workspaces_queue.request_op();
                 Ok(())

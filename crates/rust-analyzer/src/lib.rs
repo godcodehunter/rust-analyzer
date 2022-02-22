@@ -10,6 +10,10 @@
 //! a debugging aid.
 #![recursion_limit = "512"]
 
+#![feature(map_try_insert)]
+#![feature(exit_status_error)]
+#![feature(capture_disjoint_fields)]
+
 pub mod cli;
 
 #[allow(unused)]
@@ -37,6 +41,7 @@ mod diff;
 mod op_queue;
 pub mod lsp_ext;
 pub mod config;
+mod executor;
 
 #[cfg(test)]
 mod integrated_benchmarks;
