@@ -182,7 +182,7 @@ impl RunnableView {
     }
 }
 
-type WorkspaceRunnables = FxHashMap<Crate, Arc<CrateRunnables>>;
+pub type WorkspaceRunnables = FxHashMap<Crate, Arc<CrateRunnables>>;
 type CrateRunnables = FxHashMap<FileId, Arc<RunnableView>>;
 
 // TODO: Dirty code, probably it should be, for example, member of [hir::Crate] 

@@ -117,6 +117,9 @@ impl GlobalState {
             );
         };
 
+        let db = self.analysis_host.raw_database();
+        self.executor.set_db(db);
+
         if self.config.did_save_text_document_dynamic_registration() {
             let save_registration_options = lsp_types::TextDocumentSaveRegistrationOptions {
                 include_text: Some(false),

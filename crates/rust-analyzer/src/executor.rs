@@ -1,5 +1,6 @@
 use std::process::{Command, Child};
 use hir::{ModuleDef, db::HirDatabase};
+use ide::RootDatabase;
 use ide_db::runnables::{Id, RunnableView, RunnableDatabase};
 use rustc_hash::FxHashMap;
 use ide_db::base_db::Upcast;
@@ -21,19 +22,25 @@ struct RunStatus {
     // duration: todo!(),
 }
 
-pub struct Executor<'a> {
-    db: &'a (impl Upcast<HirDatabase> + Upcast<HirDatabase>),
+pub struct Executor {
+    db: *const RootDatabase,
     current_status: FxHashMap<Id, RunStatus>,
     executing: FxHashMap<Id, Child>,
 }
 
-impl<'a> Executor<'a> {
-    pub fn new(db: &'a (impl Upcast<HirDatabase> + Upcast<HirDatabase>)) -> Self {
+impl Default for Executor {
+    fn default() -> Self {
         Self { 
-            db, 
+            db: std::ptr::null(), 
             current_status: Default::default(), 
             executing: Default::default() 
         }
+    }
+}
+
+impl Executor {
+    pub fn set_db(&mut self, db: *const RootDatabase) {
+        self.db = db;
     }
 
     pub fn process(&mut self) {
@@ -64,59 +71,73 @@ impl<'a> Executor<'a> {
     }
     
     pub fn run_tests(&mut self, ids: impl Iterator<Item = Id>) {
-        for id in ids {
-            if self.executing.get(&id).is_some() {
-                tracing::error!("impossible run test with id: {:?}, because it is already running", id);
-                continue;
-            }
-
-            let rnbl = self.db.upcast::<RunnableDatabase>().get_by_id(id);
-            if rnbl.is_none() {
-                tracing::error!("impossible run test with id: {:?}, because it is unexist", id);
-                continue;
-            }
-
-            let full_path;
-            match rnbl.unwrap() {
-                RunnableView::Node(_) => {
-                    tracing::error!("id: {:?} corresponding to the node, but must to leaf", id);
+        unsafe {
+            for id in ids {
+                if self.executing.get(&id).is_some() {
+                    tracing::error!("impossible run test with id: {:?}, because it is already running", id);
                     continue;
-                },
-                RunnableView::Leaf(leaf) => {
-                    match leaf {
-                        ide_db::runnables::Runnable::Function(func) => {
-                            full_path = ModuleDef::from(func.location).canonical_path(self.db.upcast()).unwrap();
-                        },
-                        ide_db::runnables::Runnable::Doctest(_) => todo!(),
+                }
+    
+                let rnbl_db: &RunnableDatabase = (&*self.db).upcast();
+                let mut rnbl= None;
+                let workspace_rnbl = rnbl_db.workspace_runnables();
+                for crate_rnbls in workspace_rnbl.iter() {
+                    for file_rnbls in crate_rnbls.1.iter() {
+                        rnbl = file_rnbls.1.get_by_id(id);
+                        if rnbl.is_some() {
+                            break;
+                        }
                     }
-                },
-            }
+                }
 
-            // For more info read https://doc.rust-lang.org/cargo/commands/cargo-test.html
-            // Options passed to libtest https://doc.rust-lang.org/rustc/tests/index.html
-            let result = Command::new("cargo")
-                .args([
-                    "test", 
-                    full_path.as_str(), 
-                    "--", 
-                    "--exact",
-                    "--nocapture", 
-                    "--message-format=json",
-                    "-Zunstable-options",
-                    "--report-time",
-                ])
-                .spawn();
-
-            match result {
-                Ok(child) => {
-                    self.executing.insert(id, child);
-                },
-                Err(err) => {
-                    self.current_status.insert(id, RunStatus {
-                        state: ExectuinState::Errored,
-                    });
-                    tracing::error!("when trying to run test with id: {:?}, occurred error: {:?}", id, err)
-                },
+                if rnbl.is_none() {
+                    tracing::error!("impossible run test with id: {:?}, because it is unexist", id);
+                    continue;
+                }
+    
+                let full_path;
+                match rnbl.unwrap() {
+                    RunnableView::Node(_) => {
+                        tracing::error!("id: {:?} corresponding to the node, but must to leaf", id);
+                        continue;
+                    },
+                    RunnableView::Leaf(leaf) => {
+                        match leaf {
+                            ide_db::runnables::Runnable::Function(func) => {
+                                let hir_db: &HirDatabase = (&*self.db).upcast();
+                                full_path = ModuleDef::from(func.location).canonical_path(hir_db).unwrap();
+                            },
+                            ide_db::runnables::Runnable::Doctest(_) => todo!(),
+                        }
+                    },
+                }
+    
+                // For more info read https://doc.rust-lang.org/cargo/commands/cargo-test.html
+                // Options passed to libtest https://doc.rust-lang.org/rustc/tests/index.html
+                let result = Command::new("cargo")
+                    .args([
+                        "test", 
+                        full_path.as_str(), 
+                        "--", 
+                        "--exact",
+                        "--nocapture", 
+                        "--message-format=json",
+                        "-Zunstable-options",
+                        "--report-time",
+                    ])
+                    .spawn();
+    
+                match result {
+                    Ok(child) => {
+                        self.executing.insert(id, child);
+                    },
+                    Err(err) => {
+                        self.current_status.insert(id, RunStatus {
+                            state: ExectuinState::Errored,
+                        });
+                        tracing::error!("when trying to run test with id: {:?}, occurred error: {:?}", id, err)
+                    },
+                }
             }
         }
     }

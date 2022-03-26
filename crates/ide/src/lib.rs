@@ -58,7 +58,7 @@ mod runnables;
 use std::sync::Arc;
 
 use cfg::CfgOptions;
-use ide_db::{LineIndexDatabase, base_db::{Env, FileLoader, FileSet, SourceDatabase, Upcast, VfsPath, salsa::{self, ParallelDatabase}}, symbol_index::{self, FileSymbol}};
+use ide_db::{LineIndexDatabase, base_db::{Env, FileLoader, FileSet, SourceDatabase, Upcast, VfsPath, salsa::{self, ParallelDatabase}}, symbol_index::{self, FileSymbol}, runnables::RunnableDatabase};
 use syntax::SourceFile;
 
 use crate::display::ToNav;
