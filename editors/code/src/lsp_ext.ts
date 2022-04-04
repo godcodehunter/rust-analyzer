@@ -175,7 +175,11 @@ export interface RunTestsParams {
 
 export const runTests = new lc.RequestType<RunTestsParams, void, void>("experimental/runTests");
 
-export const cancelTests = new lc.RequestType0<null, void>("experimenral/cancel");
+export interface AbortTestsParams {
+    exact: string[];
+}
+
+export const abortTests = new lc.RequestType<AbortTestsParams, void, void>("experimenral/abortTests");
 
 export enum RunStatusUpdateKind {
     Started = 0,

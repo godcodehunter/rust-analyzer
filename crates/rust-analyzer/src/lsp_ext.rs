@@ -532,6 +532,20 @@ pub struct CompletionImport {
     pub imported_name: String,
 }
 
+pub enum UnsubscriptionRequest {}
+
+impl Request for UnsubscriptionRequest {
+    type Params = UnsubscriptionRequestParams;
+    type Result = ();
+    const METHOD: &'static str = "experimental/subscription";
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsubscriptionRequestParams {
+    pub data_objects: Vec<String>,
+}
+
 // Request for derive selected data and do subscribes to their changes
 pub enum SubscriptionRequest {}
 
@@ -605,14 +619,29 @@ pub struct DataUpdateParams {
 //     pub update: ,
 // }
 
-pub enum RunTests {}
+pub enum AbortTestsRequest {}
 
-// impl Request for AnalyzerStatus {
-//     type Params = RunTestsParams;
-//     type Result = ();
+impl Request for AbortTestsRequest {
+    type Params = AbortTestsParams;
+    type Result = ();
 
-//     const METHOD: &'static str = "experimental/runTests";
-// }
+    const METHOD: &'static str = "experimenral/abortTests";
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AbortTestsParams {
+    pub exact: Vec<String>,
+}
+
+pub enum RunTestsRequest {}
+
+impl Request for RunTestsRequest {
+    type Params = RunTestsParams;
+    type Result = ();
+
+    const METHOD: &'static str = "experimental/runTests";
+}
 
 #[derive(Deserialize, Serialize, Debug)]
 pub enum RunKind {

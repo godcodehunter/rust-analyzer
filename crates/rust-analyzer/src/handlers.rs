@@ -33,7 +33,7 @@ use stdx::{format_to, never};
 use syntax::{algo, ast, AstNode, TextRange, TextSize, T};
 use vfs::AbsPathBuf;
 
-use crate::global_state::FollowedData;
+use crate::{global_state::FollowedData, lsp_ext::{RunTestsParams, AbortTestsParams, UnsubscriptionRequestParams}};
 use crate::{
     cargo_target_spec::CargoTargetSpec,
     config::RustfmtConfig,
@@ -154,7 +154,22 @@ pub(crate) fn handle_subscription(
     Ok(SubscriptionResponce { errors, success })
 }
 
-pub(crate) fn handle_unsubscription() {}
+pub(crate) fn handle_unsubscription(state: &mut GlobalState, params: UnsubscriptionRequestParams) -> Result<()> {
+    todo!()
+}
+
+pub(crate) fn handle_run_tests(state: &mut GlobalState, params: RunTestsParams) -> Result<()> {
+    // TODO: params.exclude, params.run_kind
+    // TODO: id type
+    state.executor.run_tests(params.include.into_iter().map(|i| i.parse::<usize>().unwrap()));
+    Ok(())
+}
+
+pub(crate) fn handle_abort_tests(state: &mut GlobalState, params: AbortTestsParams) -> Result<()> {
+    // TODO: id type
+    state.executor.abort_tests(params.exact.into_iter().map(|i| i.parse::<usize>().unwrap()));
+    Ok(())
+}
 
 pub(crate) fn handle_memory_usage(state: &mut GlobalState, _: ()) -> Result<String> {
     let _p = profile::span("handle_memory_usage");

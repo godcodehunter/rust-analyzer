@@ -603,6 +603,9 @@ impl GlobalState {
 
         RequestDispatcher { req: Some(req), global_state: self }
             .on_sync_mut::<lsp_ext::SubscriptionRequest>(handlers::handle_subscription)?
+            .on_sync_mut::<lsp_ext::UnsubscriptionRequest>(handlers::handle_unsubscription)?
+            .on_sync_mut::<lsp_ext::RunTestsRequest>(handlers::handle_run_tests)?
+            .on_sync_mut::<lsp_ext::AbortTestsRequest>(handlers::handle_abort_tests)?
             .on_sync_mut::<lsp_ext::ReloadWorkspace>(|s, ()| {
                 s.fetch_workspaces_queue.request_op();
                 Ok(())
