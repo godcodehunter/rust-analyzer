@@ -230,3 +230,19 @@ export interface RawOutput {
 };
 
 export const runStatus = new lc.NotificationType<RunStatusUpdate>("experimental/runStatusUpdate");
+
+export interface SubscriptionRequestParams {
+    data_objects: string[];
+};
+
+export interface SubscriptionError {
+    describtion: string;
+    targets: string[];
+}
+
+export interface SubscriptionResponce {
+    errors: SubscriptionError[];
+    success: string[];
+};
+
+export const subscription = new lc.RequestType<SubscriptionRequestParams, SubscriptionResponce, void>("experimental/subscription");

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as os from "os";
 
+import * as ra from './lsp_ext';
 import * as commands from './commands';
 import { activateInlayHints } from './inlay_hints';
 import { Ctx } from './ctx';
@@ -163,6 +164,10 @@ async function initCommonContext(context: vscode.ExtensionContext, ctx: Ctx) {
         "showCollapseAll": true,
         "canSelectMany": true,
     });
+
+    await ctx.client.sendRequest(ra.subscription, {
+        data_objects: ["tests_view"],
+    }); 
 }
 
 export async function deactivate() {

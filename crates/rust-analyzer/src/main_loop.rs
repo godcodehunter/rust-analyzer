@@ -8,7 +8,10 @@ use std::{
 
 use always_assert::always;
 use crossbeam_channel::{select, Receiver};
-use ide_db::base_db::{SourceDatabaseExt, VfsPath};
+use ide_db::{
+    base_db::{SourceDatabaseExt, Upcast, VfsPath},
+    runnables::RunnableDatabase,
+};
 use lsp_server::{Connection, Notification, Request};
 use lsp_types::notification::Notification as _;
 use vfs::{ChangeKind, FileId};
@@ -16,6 +19,7 @@ use vfs::{ChangeKind, FileId};
 use crate::{
     config::Config,
     dispatch::{NotificationDispatcher, RequestDispatcher},
+    executor::ExectuinState,
     from_proto,
     global_state::{file_id_to_url, url_to_file_id, GlobalState},
     handlers, lsp_ext,
@@ -117,8 +121,50 @@ impl GlobalState {
             );
         };
 
+        // TODO: how should be runnables collected?
         let db = self.analysis_host.raw_database();
+        if self.followed_data.contains(&crate::global_state::FollowedData::TestsView) {
+            let rnbl_db: &RunnableDatabase = (&*db).upcast();
+            let wk_rnbls = rnbl_db.workspace_runnables();
+        }
+
+        // Initialize db, process execution and handle results
         self.executor.set_db(db);
+        self.executor.process();
+        let result = self.executor.results().map(|i| {
+            i.map(|i| match i.1.state {
+                ExectuinState::Failed => lsp_ext::RunStatusUpdate::Failed(lsp_ext::Failed {
+                    kind: lsp_ext::UpdateKind::Failed,
+                    id: i.0.to_string(),
+                    message: lsp_ext::TestMessage {
+                        message: i.1.message.clone(),
+                        expected_output: "".to_string(),
+                        actual_output: "".to_string(),
+                    },
+                    duration: i.1.duration,
+                }),
+                ExectuinState::Errored => lsp_ext::RunStatusUpdate::Errored(lsp_ext::Errored {
+                    kind: lsp_ext::UpdateKind::Errored,
+                    id: i.0.to_string(),
+                    message: lsp_ext::TestMessage {
+                        message: i.1.message.clone(),
+                        expected_output: "".to_string(),
+                        actual_output: "".to_string(),
+                    },
+                    duration: i.1.duration,
+                }),
+                ExectuinState::Passed => lsp_ext::RunStatusUpdate::Passed(lsp_ext::Passed {
+                    kind: lsp_ext::UpdateKind::Passed,
+                    id: i.0.to_string(),
+                    duration: i.1.duration,
+                }),
+            })
+            .collect()
+        });
+
+        if let Some(updates) = result {
+            self.send_notification::<lsp_ext::RunStatusNotification>(updates);
+        }
 
         if self.config.did_save_text_document_dynamic_registration() {
             let save_registration_options = lsp_types::TextDocumentSaveRegistrationOptions {

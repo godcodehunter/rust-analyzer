@@ -11,6 +11,7 @@ function getIconUri(iconName: string, theme: string): vscode.Uri {
 }
 
 /// Runnable.
+type Session = Iterable<Package>;
 
 type Node = Package | Crate | Module | Function;
 
@@ -20,8 +21,6 @@ enum NodeKind {
     Module,
     Function,
 }
-
-type Session = Iterable<Package>;
 
 interface Package {
     kind: NodeKind.Package;
@@ -49,8 +48,9 @@ interface Module {
 }
 
 enum TestKind {
-    Unit,
+    Test,
     Bench,
+    Bin,
 }
 
 interface Function {

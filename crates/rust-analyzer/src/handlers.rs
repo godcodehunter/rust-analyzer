@@ -33,6 +33,7 @@ use stdx::{format_to, never};
 use syntax::{algo, ast, AstNode, TextRange, TextSize, T};
 use vfs::AbsPathBuf;
 
+use crate::global_state::FollowedData;
 use crate::{
     cargo_target_spec::CargoTargetSpec,
     config::RustfmtConfig,
@@ -41,14 +42,13 @@ use crate::{
     global_state::{GlobalState, GlobalStateSnapshot},
     line_index::LineEndings,
     lsp_ext::{
-        self, InlayHint, InlayHintsParams, PositionOrRange, ViewCrateGraphParams,
-        WorkspaceSymbolParams, SubscriptionResponce, SubscriptionError,
+        self, InlayHint, InlayHintsParams, PositionOrRange, SubscriptionError,
+        SubscriptionResponce, ViewCrateGraphParams, WorkspaceSymbolParams,
     },
     lsp_utils::{all_edits_are_disjoint, invalid_params_error},
     to_proto, LspError, Result,
 };
 use std::collections::HashSet;
-use crate::global_state::FollowedData;
 
 pub(crate) fn handle_analyzer_status(
     snap: GlobalStateSnapshot,
@@ -89,7 +89,7 @@ pub(crate) fn handle_analyzer_status(
 }
 
 pub(crate) fn handle_subscription(
-    state: &mut GlobalState, 
+    state: &mut GlobalState,
     params: lsp_ext::SubscriptionRequestParams,
 ) -> Result<SubscriptionResponce> {
     let mut unknown = HashSet::new();
@@ -103,7 +103,6 @@ pub(crate) fn handle_subscription(
                 if state.followed_data.insert(FollowedData::TestsView) {
                     if success.get(&item).is_none() {
                         success.insert(item);
-                        
                     } else {
                         multiple.insert(item);
                     }
@@ -114,48 +113,48 @@ pub(crate) fn handle_subscription(
                         multiple.insert(item);
                     }
                 }
-            },
+            }
             _ => {
                 if unknown.get(&item).is_none() {
                     unknown.insert(item);
                 } else {
-                    multiple.insert(item); 
+                    multiple.insert(item);
                 }
-            },
+            }
         }
     }
 
     let mut errors = Vec::new();
     if !unknown.is_empty() {
-        errors.push(SubscriptionError{
-            describtion: "Unknown views".to_string(),
-            targets: unknown,
-        });
+        errors
+            .push(SubscriptionError { describtion: "Unknown views".to_string(), targets: unknown });
     }
 
     if !already_sync.is_empty() {
-        errors.push(SubscriptionError{
+        errors.push(SubscriptionError {
             describtion: "Views already synchronized".to_string(),
             targets: already_sync,
         });
     }
-   
+
     if !multiple.is_empty() {
-        errors.push(SubscriptionError{
+        errors.push(SubscriptionError {
             describtion: "Repeated multiple times".to_string(),
             targets: multiple,
         });
     }
 
-    Ok(SubscriptionResponce {
-        errors,
-        success,
-    })
+    for view in success.iter() {
+        match view.as_str() {
+            "tests_view" => state.followed_data.insert(FollowedData::TestsView),
+            _ => unreachable!(),
+        };
+    }
+
+    Ok(SubscriptionResponce { errors, success })
 }
 
-pub(crate) fn handle_unsubscription() {
-    
-}
+pub(crate) fn handle_unsubscription() {}
 
 pub(crate) fn handle_memory_usage(state: &mut GlobalState, _: ()) -> Result<String> {
     let _p = profile::span("handle_memory_usage");

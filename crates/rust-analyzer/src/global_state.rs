@@ -19,6 +19,7 @@ use vfs::AnchoredPathBuf;
 use crate::{
     config::Config,
     diagnostics::{CheckFixes, DiagnosticCollection},
+    executor::Executor,
     from_proto,
     line_index::{LineEndings, LineIndex},
     lsp_ext,
@@ -29,11 +30,10 @@ use crate::{
     thread_pool::TaskPool,
     to_proto::url_from_abs_path,
     Result,
-    executor::Executor,
 };
 
 #[derive(Hash, PartialEq, Eq)]
-pub enum FollowedData {
+pub(crate) enum FollowedData {
     TestsView,
 }
 

@@ -1,6 +1,9 @@
 //! rust-analyzer extensions to the LSP.
 
-use std::{collections::{HashMap, HashSet}, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use lsp_types::request::Request;
 use lsp_types::{
@@ -540,7 +543,7 @@ pub struct ClientCommandOptions {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct SubscriptionError {
     pub describtion: String,
-    pub targets: HashSet<String>
+    pub targets: HashSet<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -552,7 +555,7 @@ pub struct SubscriptionResponce {
 impl Request for SubscriptionRequest {
     type Params = SubscriptionRequestParams;
     type Result = SubscriptionResponce;
-    const METHOD: &'static str = "rust-analyzer/subscription";
+    const METHOD: &'static str = "experimental/subscription";
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -571,21 +574,36 @@ impl Notification for DataUpdate {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct DataUpdateParams {
-    pub patch: Patch,
+    // pub patch: Patch,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-pub struct Patch {
-    pub delete: Vec<usize>,
-    pub append: Vec<Append>,
-}
+// #[derive(Deserialize, Serialize, Debug)]
+// pub struct Patch {
+//     pub delete: Vec<Delete>,
+//     pub append: Vec<Append>,
+//     pub update: Vec<Update>,
+// }
 
-#[derive(Deserialize, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct Append {
-    pub target_id: usize,
-    //TODO: ...
-}
+// #[derive(Deserialize, Serialize, Debug)]
+// #[serde(rename_all = "camelCase")]
+// pub struct Delete {
+//     pub target_id: usize,
+//     pub item_id: usize,
+// }
+
+// #[derive(Deserialize, Serialize, Debug)]
+// #[serde(rename_all = "camelCase")]
+// pub struct Append {
+//     pub target_id: usize,
+//     pub item: ,
+// }
+
+// #[derive(Deserialize, Serialize, Debug)]
+// #[serde(rename_all = "camelCase")]
+// pub struct Update {
+//     pub target_id: usize,
+//     pub update: ,
+// }
 
 pub enum RunTests {}
 
@@ -613,22 +631,34 @@ pub struct RunTestsParams {
 pub enum RunStatusNotification {}
 
 impl Notification for RunStatusNotification {
-    type Params = Vec<()>;
+    type Params = Vec<RunStatusUpdate>;
 
     const METHOD: &'static str = "experimental/runStatusUpdate";
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct TestMessage {
-    message: String,
-    expected_output: String,
-    actual_output: String,
+pub enum RunStatusUpdate {
+    Started(Started),
+    Failed(Failed),
+    Errored(Errored),
+    Passed(Passed),
+    Skiped(Skiped),
+    Finish(Finish),
+    RawOutput(RawOutput),
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TestMessage {
+    pub message: String,
+    pub expected_output: String,
+    pub actual_output: String,
     //TODO: location: (),
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-enum UpdateKind {
+pub enum UpdateKind {
     Started = 0,
     Failed = 1,
     Errored = 2,
@@ -640,55 +670,55 @@ enum UpdateKind {
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct Skiped {
+pub struct Skiped {
     kind: UpdateKind,
     id: String,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct Finish {
+pub struct Finish {
     kind: UpdateKind,
     id: String,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct Started {
+pub struct Started {
     kind: UpdateKind,
     id: String,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct Failed {
-    kind: UpdateKind,
-    id: String,
-    message: TestMessage,
-    duration: f64,
+pub struct Failed {
+    pub kind: UpdateKind,
+    pub id: String,
+    pub message: TestMessage,
+    pub duration: f64,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct Errored {
-    kind: UpdateKind,
-    id: String,
-    message: TestMessage,
-    duration: f64,
+pub struct Errored {
+    pub kind: UpdateKind,
+    pub id: String,
+    pub message: TestMessage,
+    pub duration: f64,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct Passed {
-    kind: UpdateKind,
-    id: String,
-    duration: f64,
+pub struct Passed {
+    pub kind: UpdateKind,
+    pub id: String,
+    pub duration: f64,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct RawOutput {
-    kind: UpdateKind,
-    id: String,
-    message: String,
+pub struct RawOutput {
+    pub kind: UpdateKind,
+    pub id: String,
+    pub message: String,
 }

@@ -7,15 +7,19 @@ use std::iter;
 
 use either::Either;
 use hir::{HasSource, Semantics};
-use ide_db::{RootDatabase, base_db::{FileRange, Upcast}, defs::Definition, helpers::{pick_best_token, FamousDefs}, runnables::{RunnableDatabase, RunnableView}};
+use ide_db::{
+    base_db::{FileRange, Upcast},
+    defs::Definition,
+    helpers::{pick_best_token, FamousDefs},
+    runnables::{RunnableDatabase, RunnableView},
+    RootDatabase,
+};
 use itertools::Itertools;
 use syntax::{ast, match_ast, AstNode, SyntaxKind::*, SyntaxNode, SyntaxToken, T};
 
 use crate::{
-    display::TryToNav,
-    doc_links::token_as_doc_comment,
-    markup::Markup,
-    FileId, FilePosition, NavigationTarget, RangeInfo, Runnable,
+    display::TryToNav, doc_links::token_as_doc_comment, markup::Markup, FileId, FilePosition,
+    NavigationTarget, RangeInfo, Runnable,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -288,15 +292,15 @@ fn runnable_action(
     file_id: FileId,
 ) -> Option<HoverAction> {
     let rnb: &dyn RunnableDatabase = db.upcast();
-    
+
     if let Some(rnbls) = rnb.file_runnables(file_id) {
         if let Definition::ModuleDef(it) = def {
             match it {
                 hir::ModuleDef::Module(it) => {
-                    return rnbls.get_by_def(&it).map(|i| {
-                        HoverAction::Runnable(Runnable::from_db_repr(db, sema, i))
-                    });
-                },
+                    return rnbls
+                        .get_by_def(&it)
+                        .map(|i| HoverAction::Runnable(Runnable::from_db_repr(db, sema, i)));
+                }
                 hir::ModuleDef::Function(it) => {
                     let src = it.source(sema.db)?;
                     if src.file_id != file_id.into() {
@@ -304,12 +308,12 @@ fn runnable_action(
                         cov_mark::hit!(hover_macro_generated_struct_fn_doc_attr);
                         return None;
                     }
-    
-                    return rnbls.get_by_def(&it).map(|i| {
-                        HoverAction::Runnable(Runnable::from_db_repr(db, sema, i))
-                    });
+
+                    return rnbls
+                        .get_by_def(&it)
+                        .map(|i| HoverAction::Runnable(Runnable::from_db_repr(db, sema, i)));
                 }
-                _ => {},
+                _ => {}
             }
         }
     }

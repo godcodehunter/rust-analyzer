@@ -4,7 +4,13 @@ use ast::HasName;
 use cfg::CfgExpr;
 use either::Either;
 use hir::{AsAssocItem, HasAttrs, HasSource, HirDisplay, Semantics};
-use ide_db::{RootDatabase, SymbolKind, base_db::{FilePosition, FileRange, Upcast}, helpers::visit_file_defs, runnables::RunnableDatabase, search::SearchScope};
+use ide_db::{
+    base_db::{FilePosition, FileRange, Upcast},
+    helpers::visit_file_defs,
+    runnables::RunnableDatabase,
+    search::SearchScope,
+    RootDatabase, SymbolKind,
+};
 use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 use stdx::{always, format_to};
@@ -103,65 +109,70 @@ impl Runnable {
 }
 
 impl Runnable {
-    pub fn from_db_repr(db: &RootDatabase, sema: &Semantics, runnable: &ide_db::runnables::RunnableView) -> Self {
+    pub fn from_db_repr(
+        db: &RootDatabase,
+        sema: &Semantics,
+        runnable: &ide_db::runnables::RunnableView,
+    ) -> Self {
         match runnable {
-            ide_db::runnables::RunnableView::Node(n) => {
-                match n {
-                    ide_db::runnables::Node::MacroCall(_) => todo!(),
-                    ide_db::runnables::Node::Module(module) => Self::from_mod(db, sema, module),
-                }
+            ide_db::runnables::RunnableView::Node(n) => match n {
+                ide_db::runnables::Node::MacroCall(_) => todo!(),
+                ide_db::runnables::Node::Module(module) => Self::from_mod(db, sema, module),
             },
-            ide_db::runnables::RunnableView::Leaf(l) => {
-                match l {
-                    ide_db::runnables::Runnable::Function(i) => Self::from_fn(db, sema, i),
-                    ide_db::runnables::Runnable::Doctest(_) => todo!(),
-                }
+            ide_db::runnables::RunnableView::Leaf(l) => match l {
+                ide_db::runnables::Runnable::Function(i) => Self::from_fn(db, sema, i),
+                ide_db::runnables::Runnable::Doctest(_) => todo!(),
             },
         }
     }
-    
+
     fn from_mod(db: &RootDatabase, sema: &Semantics, def: &ide_db::runnables::Module) -> Runnable {
-        let path = 
-            def.location.path_to_root(sema.db).into_iter().rev().filter_map(|it| it.name(sema.db)).join("::");
+        let path = def
+            .location
+            .path_to_root(sema.db)
+            .into_iter()
+            .rev()
+            .filter_map(|it| it.name(sema.db))
+            .join("::");
         let cfg = def.location.attrs(sema.db).cfg();
         let nav = NavigationTarget::from_module_to_decl(db, def.location);
-        Runnable { 
-            use_name_in_title: false, 
-            nav, 
-            kind: RunnableKind::TestMod { path }, 
-            cfg 
-        }
+        Runnable { use_name_in_title: false, nav, kind: RunnableKind::TestMod { path }, cfg }
     }
-    
-    fn from_fn(db: &RootDatabase, sema: &Semantics, def: &ide_db::runnables::RunnableFunc) -> Runnable {
+
+    fn from_fn(
+        db: &RootDatabase,
+        sema: &Semantics,
+        def: &ide_db::runnables::RunnableFunc,
+    ) -> Runnable {
         let cfg = def.location.attrs(db.upcast()).cfg();
         // #[test/bench] expands to just the item causing us to lose the attribute, so recover them by going out of the attribute
-        // TODO: unwrap can call panic 
+        // TODO: unwrap can call panic
         let func = def.location.source(sema.db).unwrap().node_with_attributes(db.upcast());
         let nav = NavigationTarget::from_named(
             db,
             func.as_ref().map(|it| it as &dyn ast::HasName),
             SymbolKind::Function,
         );
-        
+
         let kind = match def.kind {
-            ide_db::runnables::RunnableFuncKind::Test | ide_db::runnables::RunnableFuncKind::Bench => {
+            ide_db::runnables::RunnableFuncKind::Test
+            | ide_db::runnables::RunnableFuncKind::Bench => {
                 let canonical_path = {
                     let def: hir::ModuleDef = def.location.into();
                     def.canonical_path(db.upcast())
                 };
                 let name_string = def.location.name(db.upcast()).to_string();
                 let test_id = canonical_path.map(TestId::Path).unwrap_or(TestId::Name(name_string));
-                
+
                 match def.kind {
                     ide_db::runnables::RunnableFuncKind::Test => {
                         let attr = TestAttr::from_fn(&func.value);
-                        RunnableKind::Test {test_id, attr}
-                    },
+                        RunnableKind::Test { test_id, attr }
+                    }
                     ide_db::runnables::RunnableFuncKind::Bench => RunnableKind::Bench { test_id },
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
-            },
+            }
             ide_db::runnables::RunnableFuncKind::Bin => RunnableKind::Bin,
         };
 
