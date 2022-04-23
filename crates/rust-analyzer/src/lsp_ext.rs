@@ -588,36 +588,36 @@ impl Notification for DataUpdate {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct DataUpdateParams {
-    // pub patch: Patch,
+    pub patch: Patch,
 }
 
-// #[derive(Deserialize, Serialize, Debug)]
-// pub struct Patch {
-//     pub delete: Vec<Delete>,
-//     pub append: Vec<Append>,
-//     pub update: Vec<Update>,
-// }
+#[derive(Deserialize, Serialize, Debug)]
+pub struct Patch {
+    pub delete: Vec<Delete>,
+    pub append: Vec<Append>,
+    pub update: Vec<Update>,
+}
 
-// #[derive(Deserialize, Serialize, Debug)]
-// #[serde(rename_all = "camelCase")]
-// pub struct Delete {
-//     pub target_id: usize,
-//     pub item_id: usize,
-// }
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Delete {
+    pub target_id: usize,
+    pub item_id: usize,
+}   
 
-// #[derive(Deserialize, Serialize, Debug)]
-// #[serde(rename_all = "camelCase")]
-// pub struct Append {
-//     pub target_id: usize,
-//     pub item: ,
-// }
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Append {
+    pub target_id: usize,
+    pub item: ,
+}
 
-// #[derive(Deserialize, Serialize, Debug)]
-// #[serde(rename_all = "camelCase")]
-// pub struct Update {
-//     pub target_id: usize,
-//     pub update: ,
-// }
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Update {
+    pub target_id: usize,
+    pub update: ,
+}
 
 pub enum AbortTestsRequest {}
 

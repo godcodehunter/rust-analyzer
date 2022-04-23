@@ -126,6 +126,8 @@ impl GlobalState {
         if self.followed_data.contains(&crate::global_state::FollowedData::TestsView) {
             let rnbl_db: &RunnableDatabase = (&*db).upcast();
             let wk_rnbls = rnbl_db.workspace_runnables();
+            
+            self.send_notification::<lsp_ext::DataUpdate>(updates);
         }
 
         // Initialize db, process execution and handle results
