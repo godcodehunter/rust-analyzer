@@ -578,21 +578,10 @@ pub struct SubscriptionRequestParams {
     pub data_objects: Vec<String>,
 }
 
-#[derive(Debug)]
-pub enum DataUpdate {}
-
-impl Notification for DataUpdate {
-    type Params = DataUpdateParams;
-    const METHOD: &'static str = "data/update";
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct DataUpdateParams {
-    pub patch: Patch,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Patch {
+    pub id: u64,
     pub delete: Vec<Delete>,
     pub append: Vec<Append>,
     pub update: Vec<Update>,
@@ -603,20 +592,79 @@ pub struct Patch {
 pub struct Delete {
     pub target_id: usize,
     pub item_id: usize,
-}   
-
-#[derive(Deserialize, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct Append {
-    pub target_id: usize,
-    pub item: ,
-}
+} 
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Update {
     pub target_id: usize,
-    pub update: ,
+    pub changes: Changes, 
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Append {
+    pub target_id: usize,
+    pub item: Item,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+
+pub struct Changes {
+
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+#[serde(tag = "kind")]
+pub enum Item {
+    Package(Package),
+    Crate(Crate),
+    Module(Module),
+    Function(Function),
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+
+pub struct Package {
+    id: usize,
+    name: String,
+    location: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Crate {
+    pub id: usize,
+    pub name: String,
+    pub location: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Module {
+    pub id: usize,
+    pub name: String,
+    pub location: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Function {
+    pub id: usize,
+    pub name: String,
+    pub location: String,
+    // range: [[number, number], [number, number]];
+    // testKind: TestKind;
+}
+
+pub enum DataUpdate {}
+
+impl Notification for DataUpdate {
+    type Params = Patch;
+    const METHOD: &'static str = "data/update";
 }
 
 pub enum AbortTestsRequest {}

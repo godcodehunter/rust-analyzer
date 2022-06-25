@@ -145,6 +145,9 @@ impl GlobalState {
 
         let analysis_host = AnalysisHost::new(config.lru_capacity());
         let (flycheck_sender, flycheck_receiver) = unbounded();
+
+        let mut followed_data: std::collections::HashSet<FollowedData> = Default::default();
+        followed_data.insert(crate::global_state::FollowedData::TestsView);
         let mut this = GlobalState {
             sender,
             req_queue: ReqQueue::default(),
@@ -176,7 +179,7 @@ impl GlobalState {
 
             fetch_build_data_queue: OpQueue::default(),
             executor: Executor::default(),
-            followed_data: Default::default(),
+            followed_data,
         };
         // Apply any required database inputs from the config.
         this.update_configuration(config);

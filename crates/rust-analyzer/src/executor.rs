@@ -47,7 +47,7 @@ impl Executor {
         if self.current_status.is_empty() {
             return None;
         }
-
+        
         Some(self.current_status.iter())
     }
 
@@ -96,7 +96,7 @@ impl Executor {
                 let workspace_rnbl = rnbl_db.workspace_runnables();
                 for crate_rnbls in workspace_rnbl.iter() {
                     for file_rnbls in crate_rnbls.1.iter() {
-                        rnbl = file_rnbls.1.get_by_id(id);
+                        rnbl = file_rnbls.1.get_rnbl_by_id(id);
                         if rnbl.is_some() {
                             break;
                         }

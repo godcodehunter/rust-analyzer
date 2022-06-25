@@ -164,10 +164,6 @@ async function initCommonContext(context: vscode.ExtensionContext, ctx: Ctx) {
         "showCollapseAll": true,
         "canSelectMany": true,
     });
-
-    await ctx.client.sendRequest(ra.subscription, {
-        data_objects: ["tests_view"],
-    }); 
 }
 
 export async function deactivate() {

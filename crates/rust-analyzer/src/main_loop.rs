@@ -122,50 +122,100 @@ impl GlobalState {
         };
 
         // TODO: how should be runnables collected?
-        let db = self.analysis_host.raw_database();
         if self.followed_data.contains(&crate::global_state::FollowedData::TestsView) {
-            let rnbl_db: &RunnableDatabase = (&*db).upcast();
-            let wk_rnbls = rnbl_db.workspace_runnables();
-            
-            self.send_notification::<lsp_ext::DataUpdate>(updates);
+            let mut patch = ide_db::runnables::patch().lock().unwrap();
+            let mut conv_patch = lsp_ext::Patch::default();
+            {
+                conv_patch.id = patch.id;
+
+                conv_patch.delete = patch.delete.iter().map(|item| {
+                    lsp_ext::Delete {
+                        target_id: item.target_id,
+                        item_id: item.item_id,
+                    }
+                }).collect();
+
+                conv_patch.append = patch.append.iter().map(|i| {
+                    let item = match i.item {
+                        ide_db::runnables::RunnableView::Node(ref node) => {
+                            match node {
+                                ide_db::runnables::Node::Module(ref module) => {
+                                    lsp_ext::Item::Module(
+                                        lsp_ext::Module {
+                                            id: module.id,
+                                            name: module.name.clone(),
+                                            location: "TODO".to_string(),
+                                        }
+                                    )
+                                },
+                                _ => todo!(),   
+                            }
+                        },
+                        ide_db::runnables::RunnableView::Leaf(ref runnable) => {
+                            match runnable {
+                                ide_db::runnables::Runnable::Function(ref func) => {
+                                    lsp_ext::Item::Function(lsp_ext::Function {
+                                        id: func.id,
+                                        name: func.name.clone(),
+                                        location: "TODO".to_string(),
+                                    })
+                                },
+                                _ => todo!(),
+                            }
+                        },
+                    };
+                    lsp_ext::Append {
+                        target_id: i.target_id,
+                        item,
+                    }
+                }).collect();
+
+                conv_patch.update = patch.update.iter().map(|item| {
+                    todo!()
+                }).collect();
+            }
+            self.send_notification::<lsp_ext::DataUpdate>(conv_patch);
+            patch.was_consumed();
         }
 
         // Initialize db, process execution and handle results
+        let db = self.analysis_host.raw_database();
         self.executor.set_db(db);
         self.executor.process();
-        let result = self.executor.results().map(|i| {
-            i.map(|i| match i.1.state {
+
+        let results = self.executor.results().map(|iter| {
+            iter.map(|item| match item.1.state {
                 ExectuinState::Failed => lsp_ext::RunStatusUpdate::Failed(lsp_ext::Failed {
                     kind: lsp_ext::UpdateKind::Failed,
-                    id: i.0.to_string(),
+                    id: item.0.to_string(),
                     message: lsp_ext::TestMessage {
-                        message: i.1.message.clone(),
-                        expected_output: "".to_string(),
-                        actual_output: "".to_string(),
+                        message: item.1.message.clone(),
+                        expected_output: "expected_output".to_string(),
+                        actual_output: "actual_output".to_string(),
                     },
-                    duration: i.1.duration,
+                    duration: item.1.duration,
                 }),
                 ExectuinState::Errored => lsp_ext::RunStatusUpdate::Errored(lsp_ext::Errored {
                     kind: lsp_ext::UpdateKind::Errored,
-                    id: i.0.to_string(),
+                    id: item.0.to_string(),
                     message: lsp_ext::TestMessage {
-                        message: i.1.message.clone(),
-                        expected_output: "".to_string(),
-                        actual_output: "".to_string(),
+                        message: item.1.message.clone(),
+                        expected_output: "expected_output".to_string(),
+                        actual_output: "actual_output".to_string(),
                     },
-                    duration: i.1.duration,
+                    duration: item.1.duration,
                 }),
                 ExectuinState::Passed => lsp_ext::RunStatusUpdate::Passed(lsp_ext::Passed {
                     kind: lsp_ext::UpdateKind::Passed,
-                    id: i.0.to_string(),
-                    duration: i.1.duration,
+                    id: item.0.to_string(),
+                    duration: item.1.duration,
                 }),
             })
             .collect()
         });
 
-        if let Some(updates) = result {
-            self.send_notification::<lsp_ext::RunStatusNotification>(updates);
+        if let Some(results) = results {
+            self.send_notification::<lsp_ext::RunStatusNotification>(results);
         }
 
         if self.config.did_save_text_document_dynamic_registration() {

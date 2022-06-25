@@ -16,10 +16,10 @@ type Session = Iterable<Package>;
 type Node = Package | Crate | Module | Function;
 
 enum NodeKind {
-    Package,
-    Crate,
-    Module,
-    Function,
+    Package = "Package",
+    Crate = "Crate",
+    Module = "Module",
+    Function = "Function",
 }
 
 interface Package {
