@@ -16,7 +16,7 @@ trait ChangeObserver<Id, Item, Changes> {
     fn update(&mut self, target_id: Id, update: Changes);
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Patch {
     pub id: u64,
     pub delete: Vec<Delete>,
@@ -35,23 +35,33 @@ impl Patch {
         self.append.clear();
         self.update.clear();
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.delete.is_empty() 
+        && self.append.is_empty() 
+        && self.update.is_empty()
+    }
 }
 
+#[derive(Clone)]
 pub struct Delete {
     pub target_id: Id,
     pub item_id: Id,
 }   
 
+#[derive(Clone)]
 pub struct Append {
     pub target_id: Id,
     pub item: RunnableView,
 }
 
+#[derive(Clone)]
 pub struct Update {
     target_id: Id,
     changes: Changes, 
 }
 
+#[derive(Clone)]
 pub enum Changes {
     RunnableFunc {
         name: Option<String>,

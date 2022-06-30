@@ -72,6 +72,16 @@ async function tryActivate(context: vscode.ExtensionContext) {
         null,
         ctx.subscriptions,
     );
+
+    const dataProvider = new TestDataProvider();
+    new TestExplorerProvider(dataProvider, ctx);
+
+    const runnableProvider = new RunnableDataProvider();
+    vscode.window.createTreeView('runnableExplorer', {
+        "treeDataProvider": runnableProvider,
+        "showCollapseAll": true,
+        "canSelectMany": true,
+    });
 }
 
 async function initCommonContext(context: vscode.ExtensionContext, ctx: Ctx) {
@@ -154,16 +164,6 @@ async function initCommonContext(context: vscode.ExtensionContext, ctx: Ctx) {
     ctx.registerCommand('resolveCodeAction', commands.resolveCodeAction);
     ctx.registerCommand('applyActionGroup', commands.applyActionGroup);
     ctx.registerCommand('gotoLocation', commands.gotoLocation);
-
-    const dataProvider = new TestDataProvider();
-    new TestExplorerProvider(dataProvider, ctx);
-
-    const runnableProvider = new RunnableDataProvider();
-    vscode.window.createTreeView('runnableExplorer', {
-        "treeDataProvider": runnableProvider,
-        "showCollapseAll": true,
-        "canSelectMany": true,
-    });
 }
 
 export async function deactivate() {

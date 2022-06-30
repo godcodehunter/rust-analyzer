@@ -161,19 +161,19 @@ pub(crate) fn handle_unsubscription(state: &mut GlobalState, params: Unsubscript
 pub(crate) fn handle_run_tests(state: &mut GlobalState, params: RunTestsParams) -> Result<()> {
     // TODO: params.exclude, params.run_kind
     // TODO: id type
-    state.executor.run_tests(params.include.into_iter().map(|i| i.parse::<usize>().unwrap()));
+    state.executor.lock().run_tests(params.include.into_iter().map(|i| i.parse::<usize>().unwrap()));
     Ok(())
 }
 
 pub(crate) fn handle_abort_tests(state: &mut GlobalState, params: AbortTestsParams) -> Result<()> {
-    // TODO: id type
-    state.executor.abort_tests(params.exact.into_iter().map(|i| i.parse::<usize>().unwrap()));
+    let ids = params.exact.into_iter().map(|i| i.parse::<usize>().unwrap());
+    state.executor.lock().abort_tests(ids);
     Ok(())
 }
 
 pub(crate) fn handle_memory_usage(state: &mut GlobalState, _: ()) -> Result<String> {
     let _p = profile::span("handle_memory_usage");
-    let mut mem = state.analysis_host.per_query_memory_usage();
+    let mut mem = state.analysis_host.lock().per_query_memory_usage();
     mem.push(("Remaining".into(), profile::memory_usage().allocated));
 
     let mut out = String::new();

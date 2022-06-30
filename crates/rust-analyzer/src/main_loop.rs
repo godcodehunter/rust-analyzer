@@ -8,8 +8,9 @@ use std::{
 
 use always_assert::always;
 use crossbeam_channel::{select, Receiver};
+use hir::known::le;
 use ide_db::{
-    base_db::{SourceDatabaseExt, Upcast, VfsPath},
+    base_db::{SourceDatabaseExt, Upcast, VfsPath, salsa::ParallelDatabase},
     runnables::RunnableDatabase,
 };
 use lsp_server::{Connection, Notification, Request};
@@ -121,103 +122,6 @@ impl GlobalState {
             );
         };
 
-        // TODO: how should be runnables collected?
-        if self.followed_data.contains(&crate::global_state::FollowedData::TestsView) {
-            let mut patch = ide_db::runnables::patch().lock().unwrap();
-            let mut conv_patch = lsp_ext::Patch::default();
-            {
-                conv_patch.id = patch.id;
-
-                conv_patch.delete = patch.delete.iter().map(|item| {
-                    lsp_ext::Delete {
-                        target_id: item.target_id,
-                        item_id: item.item_id,
-                    }
-                }).collect();
-
-                conv_patch.append = patch.append.iter().map(|i| {
-                    let item = match i.item {
-                        ide_db::runnables::RunnableView::Node(ref node) => {
-                            match node {
-                                ide_db::runnables::Node::Module(ref module) => {
-                                    lsp_ext::Item::Module(
-                                        lsp_ext::Module {
-                                            id: module.id,
-                                            name: module.name.clone(),
-                                            location: "TODO".to_string(),
-                                        }
-                                    )
-                                },
-                                _ => todo!(),   
-                            }
-                        },
-                        ide_db::runnables::RunnableView::Leaf(ref runnable) => {
-                            match runnable {
-                                ide_db::runnables::Runnable::Function(ref func) => {
-                                    lsp_ext::Item::Function(lsp_ext::Function {
-                                        id: func.id,
-                                        name: func.name.clone(),
-                                        location: "TODO".to_string(),
-                                    })
-                                },
-                                _ => todo!(),
-                            }
-                        },
-                    };
-                    lsp_ext::Append {
-                        target_id: i.target_id,
-                        item,
-                    }
-                }).collect();
-
-                conv_patch.update = patch.update.iter().map(|item| {
-                    todo!()
-                }).collect();
-            }
-            self.send_notification::<lsp_ext::DataUpdate>(conv_patch);
-            patch.was_consumed();
-        }
-
-        // Initialize db, process execution and handle results
-        let db = self.analysis_host.raw_database();
-        self.executor.set_db(db);
-        self.executor.process();
-
-        let results = self.executor.results().map(|iter| {
-            iter.map(|item| match item.1.state {
-                ExectuinState::Failed => lsp_ext::RunStatusUpdate::Failed(lsp_ext::Failed {
-                    kind: lsp_ext::UpdateKind::Failed,
-                    id: item.0.to_string(),
-                    message: lsp_ext::TestMessage {
-                        message: item.1.message.clone(),
-                        expected_output: "expected_output".to_string(),
-                        actual_output: "actual_output".to_string(),
-                    },
-                    duration: item.1.duration,
-                }),
-                ExectuinState::Errored => lsp_ext::RunStatusUpdate::Errored(lsp_ext::Errored {
-                    kind: lsp_ext::UpdateKind::Errored,
-                    id: item.0.to_string(),
-                    message: lsp_ext::TestMessage {
-                        message: item.1.message.clone(),
-                        expected_output: "expected_output".to_string(),
-                        actual_output: "actual_output".to_string(),
-                    },
-                    duration: item.1.duration,
-                }),
-                ExectuinState::Passed => lsp_ext::RunStatusUpdate::Passed(lsp_ext::Passed {
-                    kind: lsp_ext::UpdateKind::Passed,
-                    id: item.0.to_string(),
-                    duration: item.1.duration,
-                }),
-            })
-            .collect()
-        });
-
-        if let Some(results) = results {
-            self.send_notification::<lsp_ext::RunStatusNotification>(results);
-        }
-
         if self.config.did_save_text_document_dynamic_registration() {
             let save_registration_options = lsp_types::TextDocumentSaveRegistrationOptions {
                 include_text: Some(false),
@@ -252,6 +156,9 @@ impl GlobalState {
                 |_, _| (),
             );
         }
+
+        self.run_executor();
+        self.process_runnables();
 
         self.fetch_workspaces_queue.request_op();
         if self.fetch_workspaces_queue.should_start_op() {
@@ -556,7 +463,9 @@ impl GlobalState {
 
         if let Some(diagnostic_changes) = self.diagnostics.take_changes() {
             for file_id in diagnostic_changes {
-                let db = self.analysis_host.raw_database();
+                let analysis_host = self.analysis_host.clone();
+                let analysis_host = analysis_host.lock();
+                let db = analysis_host.raw_database();
                 let source_root = db.file_source_root(file_id);
                 if db.source_root(source_root).is_library {
                     // Only publish diagnostics for files in the workspace, not from crates.io deps
@@ -853,6 +762,140 @@ impl GlobalState {
             })?
             .finish();
         Ok(())
+    }
+
+    /// Starts an Executor in the background thread
+    fn run_executor(&mut self) {
+        self.executor.lock().set_analysis_host(self.analysis_host.clone());
+        
+        let sender = self.sender.clone();
+        let m_executor = self.executor.clone();
+        
+        self.task_pool.handle.spawn_silent(move | | {
+            loop {
+                let mut executor = m_executor.lock();
+
+                executor.process();
+                let results = executor.results().map(|iter| {
+                    iter.map(|item| match item.1.state {
+                        ExectuinState::Failed => lsp_ext::RunStatusUpdate::Failed(lsp_ext::Failed {
+                            kind: lsp_ext::UpdateKind::Failed,
+                            id: item.0.to_string(),
+                            message: lsp_ext::TestMessage {
+                                message: item.1.message.clone(),
+                                expected_output: "expected_output".to_string(),
+                                actual_output: "actual_output".to_string(),
+                            },
+                            duration: item.1.duration,
+                        }),
+                        ExectuinState::Errored => lsp_ext::RunStatusUpdate::Errored(lsp_ext::Errored {
+                            kind: lsp_ext::UpdateKind::Errored,
+                            id: item.0.to_string(),
+                            message: lsp_ext::TestMessage {
+                                message: item.1.message.clone(),
+                                expected_output: "expected_output".to_string(),
+                                actual_output: "actual_output".to_string(),
+                            },
+                            duration: item.1.duration,
+                        }),
+                        ExectuinState::Passed => lsp_ext::RunStatusUpdate::Passed(lsp_ext::Passed {
+                            kind: lsp_ext::UpdateKind::Passed,
+                            id: item.0.to_string(),
+                            duration: item.1.duration,
+                        }),
+                    })
+                    .collect()
+                });
+
+                if let Some(results) = results {
+                    // TODO: it is just ilining of `self.send_notification` and internal call of `send`,
+                    // becouse we can have partial borrowing only at on the border with a closure
+                    let params: <lsp_ext::RunStatusNotification as lsp_types::notification::Notification>::Params = results;
+                    let not = lsp_server::Notification::new(lsp_ext::RunStatusNotification::METHOD.to_string(), params);
+                    sender.send(not.into()).unwrap();
+                }
+            }
+        });
+    }
+
+    fn process_runnables(&mut self) {
+        // TODO: ... 
+        // if self.followed_data.contains(&crate::global_state::FollowedData::TestsView) {
+        //   
+        // }
+
+        let analysis_host = self.analysis_host.clone();
+        let sender = self.sender.clone();
+
+        self.task_pool.handle.spawn_silent(move | | {
+            loop {
+                /// TODO: ...
+                let rnbl = (analysis_host.lock().raw_database() as &dyn RunnableDatabase).workspace_runnables();
+                eprintln!("try worpspace runnable: {:?}", rnbl);
+                
+                let mut patch = ide_db::runnables::patch().lock().unwrap();
+                if !patch.is_empty() {
+                    eprintln!("patch");
+                    let mut conv_patch = lsp_ext::Patch::default();
+                    {
+                        conv_patch.id = patch.id;
+
+                        conv_patch.delete = patch.delete.iter().map(|item| {
+                            lsp_ext::Delete {
+                                target_id: item.target_id,
+                                item_id: item.item_id,
+                            }
+                        }).collect();
+
+                        conv_patch.append = patch.append.iter().map(|i| {
+                            let item = match i.item {
+                                ide_db::runnables::RunnableView::Node(ref node) => {
+                                    match node {
+                                        ide_db::runnables::Node::Module(ref module) => {
+                                            lsp_ext::Item::Module(
+                                                lsp_ext::Module {
+                                                    id: module.id,
+                                                    name: module.name.clone(),
+                                                    location: "TODO".to_string(),
+                                                }
+                                            )
+                                        },
+                                        _ => todo!(),   
+                                    }
+                                },
+                                ide_db::runnables::RunnableView::Leaf(ref runnable) => {
+                                    match runnable {
+                                        ide_db::runnables::Runnable::Function(ref func) => {
+                                            lsp_ext::Item::Function(lsp_ext::Function {
+                                                id: func.id,
+                                                name: func.name.clone(),
+                                                location: "TODO".to_string(),
+                                            })
+                                        },
+                                        _ => todo!(),
+                                    }
+                                },
+                            };
+                            lsp_ext::Append {
+                                target_id: i.target_id,
+                                item,
+                            }
+                        }).collect();
+
+                        conv_patch.update = patch.update.iter().map(|item| {
+                            todo!()
+                        }).collect();
+                    }
+                    
+                    // TODO: it is just ilining of `self.send_notification` and internal call of `send`,
+                    // becouse we can have partial borrowing only at on the border with a closure
+                    let not = lsp_server::Notification::new(lsp_ext::RunStatusNotification::METHOD.to_string(), conv_patch);
+                    sender.send(not.into()).unwrap();
+                    
+                    patch.was_consumed();
+                }
+            }
+        });
     }
 
     fn update_diagnostics(&mut self) {

@@ -23,6 +23,13 @@ impl<T> TaskPool<T> {
         })
     }
 
+    pub(crate) fn spawn_silent<F>(&mut self, task: F) 
+    where
+        F: FnOnce() + Send + 'static
+    {
+        self.inner.execute(task)
+    }
+
     pub(crate) fn spawn_with_sender<F>(&mut self, task: F)
     where
         F: FnOnce(Sender<T>) + Send + 'static,

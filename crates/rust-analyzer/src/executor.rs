@@ -1,9 +1,12 @@
-use hir::{db::HirDatabase, ModuleDef};
-use ide::RootDatabase;
+use hir::ModuleDef;
 use ide_db::base_db::Upcast;
 use ide_db::runnables::{Id, RunnableDatabase, RunnableView};
+use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use std::process::{Child, Command};
+use std::sync::Arc;
+use ide_db::base_db::salsa::{Snapshot, ParallelDatabase};
+use ide::{RootDatabase, AnalysisHost, Analysis};
 
 pub enum ExectuinState {
     /// Indicates a test has failed, it means that the test did not
@@ -23,7 +26,8 @@ pub struct RunStatus {
 }
 
 pub struct Executor {
-    db: *const RootDatabase,
+    // TODO: size know at compile time point 
+    analysis: Option<Arc<Mutex<AnalysisHost>>>,
     current_status: FxHashMap<Id, RunStatus>,
     executing: FxHashMap<Id, Child>,
 }
@@ -31,7 +35,7 @@ pub struct Executor {
 impl Default for Executor {
     fn default() -> Self {
         Self {
-            db: std::ptr::null(),
+            analysis: None,
             current_status: Default::default(),
             executing: Default::default(),
         }
@@ -39,10 +43,16 @@ impl Default for Executor {
 }
 
 impl Executor {
-    pub fn set_db(&mut self, db: *const RootDatabase) {
-        self.db = db;
+    pub fn set_analysis_host(&mut self, db_resolver: Arc<Mutex<AnalysisHost>>) {
+        self.analysis = Some(db_resolver);
     }
 
+    pub fn snapshot(&self) -> Snapshot<RootDatabase> {
+        self.analysis.as_ref().unwrap().lock().raw_database().snapshot()
+    }
+}
+
+impl Executor {
     pub fn results(&self) -> Option<impl Iterator<Item = (&Id, &RunStatus)>> {
         if self.current_status.is_empty() {
             return None;
@@ -91,9 +101,8 @@ impl Executor {
                     continue;
                 }
 
-                let rnbl_db: &RunnableDatabase = (&*self.db).upcast();
                 let mut rnbl = None;
-                let workspace_rnbl = rnbl_db.workspace_runnables();
+                let workspace_rnbl = self.snapshot().workspace_runnables();
                 for crate_rnbls in workspace_rnbl.iter() {
                     for file_rnbls in crate_rnbls.1.iter() {
                         rnbl = file_rnbls.1.get_rnbl_by_id(id);
@@ -116,9 +125,8 @@ impl Executor {
                     }
                     RunnableView::Leaf(leaf) => match leaf {
                         ide_db::runnables::Runnable::Function(func) => {
-                            let hir_db: &HirDatabase = (&*self.db).upcast();
                             full_path =
-                                ModuleDef::from(func.location).canonical_path(hir_db).unwrap();
+                                ModuleDef::from(func.location).canonical_path(self.snapshot().upcast()).unwrap();
                         }
                         ide_db::runnables::Runnable::Doctest(_) => todo!(),
                     },

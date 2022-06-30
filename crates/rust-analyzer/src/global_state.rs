@@ -54,13 +54,19 @@ pub(crate) type ReqQueue = lsp_server::ReqQueue<(String, Instant), ReqHandler>;
 ///
 /// Note that this struct has more than on impl in various modules!
 pub(crate) struct GlobalState {
-    sender: Sender<lsp_server::Message>,
+    /// The sendind side of one of the two channels, 
+    /// that together represent the [LSP protocol connection](lsp_server::Connection)
+    pub(crate) sender: Sender<lsp_server::Message>,
+    /// Manages the set of pending requests, both incomming and outgoing.
     req_queue: ReqQueue,
+    /// Pool of tasks that execute in the background
     pub(crate) task_pool: Handle<TaskPool<Task>, Receiver<Task>>,
     pub(crate) loader: Handle<Box<dyn vfs::loader::Handle>, Receiver<vfs::loader::Message>>,
+    /// Configuration for server  
     pub(crate) config: Arc<Config>,
-    pub(crate) analysis_host: AnalysisHost,
+    pub(crate) analysis_host: Arc<Mutex<AnalysisHost>>,
     pub(crate) diagnostics: DiagnosticCollection,
+    /// Holds the set of in-memory documents.
     pub(crate) mem_docs: MemDocs,
     pub(crate) semantic_tokens_cache: Arc<Mutex<FxHashMap<Url, SemanticTokens>>>,
     pub(crate) shutdown_requested: bool,
@@ -110,8 +116,10 @@ pub(crate) struct GlobalState {
 
     pub(crate) prime_caches_queue: OpQueue<()>,
 
+    /// Contains the data that the client wants to synchronize
     pub(crate) followed_data: std::collections::HashSet<FollowedData>,
-    pub(crate) executor: Executor,
+    /// Manages test runs: run tests, abort tests, provide the run status.
+    pub(crate) executor: Arc<Mutex<Executor>>,
 }
 
 /// An immutable snapshot of the world's state at a point in time.
@@ -143,7 +151,7 @@ impl GlobalState {
             Handle { handle, receiver }
         };
 
-        let analysis_host = AnalysisHost::new(config.lru_capacity());
+        let analysis_host = Arc::new(Mutex::new(AnalysisHost::new(config.lru_capacity())));
         let (flycheck_sender, flycheck_receiver) = unbounded();
 
         let mut followed_data: std::collections::HashSet<FollowedData> = Default::default();
@@ -178,7 +186,7 @@ impl GlobalState {
             prime_caches_queue: OpQueue::default(),
 
             fetch_build_data_queue: OpQueue::default(),
-            executor: Executor::default(),
+            executor: Default::default(),
             followed_data,
         };
         // Apply any required database inputs from the config.
@@ -234,7 +242,7 @@ impl GlobalState {
             change
         };
 
-        self.analysis_host.apply_change(change);
+        self.analysis_host.lock().apply_change(change);
         true
     }
 
@@ -242,7 +250,7 @@ impl GlobalState {
         GlobalStateSnapshot {
             config: Arc::clone(&self.config),
             workspaces: Arc::clone(&self.workspaces),
-            analysis: self.analysis_host.analysis(),
+            analysis: self.analysis_host.lock().analysis(),
             vfs: Arc::clone(&self.vfs),
             check_fixes: Arc::clone(&self.diagnostics.check_fixes),
             mem_docs: self.mem_docs.clone(),
@@ -306,7 +314,7 @@ impl GlobalState {
 
 impl Drop for GlobalState {
     fn drop(&mut self) {
-        self.analysis_host.request_cancellation()
+        self.analysis_host.lock().request_cancellation()
     }
 }
 

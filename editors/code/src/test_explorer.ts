@@ -561,7 +561,7 @@ export class TestExplorerProvider {
         this.controller = vscode.tests.createTestController("rust-analyzer", "rust");
         this.treeDataProvider = treeProvider;
         this.treeDataProvider.onDidChangeTreeData!(this.updateBranch);
-
+        
         this.runProfile = this.controller.createRunProfile(
             "Usually run",
             vscode.TestRunProfileKind.Run,
@@ -576,7 +576,10 @@ export class TestExplorerProvider {
             true
         );
 
-        this.updateBranch();
+        // this.updateBranch();
+        ctx.client.onNotification(ra.dataUpdate, (params) => {
+            console.log();
+        })
     }
 }
 

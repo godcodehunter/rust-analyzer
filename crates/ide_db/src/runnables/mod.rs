@@ -137,7 +137,8 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Runnable
 
     let sema = Semantics::new(db.upcast());
 
-    let mut patch = Patch::default();
+    // TODO: ???? 
+    let mut patch = (*self::patch().lock().unwrap()).clone();
     let mut res = None;
 
     visit_file_defs_with_path(
