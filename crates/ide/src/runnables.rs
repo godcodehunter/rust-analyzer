@@ -112,14 +112,14 @@ impl Runnable {
     pub fn from_db_repr(
         db: &RootDatabase,
         sema: &Semantics,
-        runnable: &ide_db::runnables::RunnableView,
+        runnable: &ide_db::runnables::Content,
     ) -> Self {
         match runnable {
-            ide_db::runnables::RunnableView::Node(n) => match n {
+            ide_db::runnables::Content::Node(n) => match n {
                 ide_db::runnables::Node::MacroCall(_) => todo!(),
                 ide_db::runnables::Node::Module(module) => Self::from_mod(db, sema, module),
             },
-            ide_db::runnables::RunnableView::Leaf(l) => match l {
+            ide_db::runnables::Content::Leaf(l) => match l {
                 ide_db::runnables::Runnable::Function(i) => Self::from_fn(db, sema, i),
                 ide_db::runnables::Runnable::Doctest(_) => todo!(),
             },
@@ -193,13 +193,25 @@ impl Runnable {
 // |===
 // image::https://user-images.githubusercontent.com/48062697/113065583-055aae80-91b1-11eb-958f-d67efcaf6a2f.gif[]
 pub(crate) fn runnables(db: &RootDatabase, file_id: FileId) -> Vec<Runnable> {
+    use ide_db::runnables::*;
+
     let rundb: &dyn RunnableDatabase = db.upcast();
     let sema = Semantics::new(db);
-    if let Some(view) = rundb.file_runnables(file_id) {
-        view.flatten_content().map(|i| Runnable::from_db_repr(db, &sema, i)).collect()
-    } else {
-        Default::default()
-    }
+
+    let mut buff = Vec::new();
+    if let Some(module) = rundb.file_runnables(file_id) { 
+        let content = ide_db::runnables::flatten_content(ide_db::runnables::IterItem::Module(&module));
+        for item in content {
+            let r = match item {
+                IterItem::RunnableFunc(func) => Content::Leaf(Runnable::Function(func.clone())),
+                IterItem::Module(module) => Content::Node(Node::Module(module.clone())),
+                _ => { continue; /* TODO */ },
+            };
+            buff.push(self::Runnable::from_db_repr(db, &sema, &r)); 
+        }
+    } 
+
+    buff
 }
 
 // Feature: Related Tests

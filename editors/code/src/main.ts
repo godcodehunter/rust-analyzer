@@ -12,7 +12,7 @@ import { fetchRelease, download } from './net';
 import { activateTaskProvider } from './tasks';
 import { setContextValue } from './util';
 import { exec, spawnSync } from 'child_process';
-import { RunnableDataProvider, TestDataProvider, TestExplorerProvider } from './test_explorer';
+import { TestDataProvider, TestExplorerProvider } from './test_explorer';
 
 let ctx: Ctx | undefined;
 
@@ -73,15 +73,14 @@ async function tryActivate(context: vscode.ExtensionContext) {
         ctx.subscriptions,
     );
 
-    const dataProvider = new TestDataProvider();
-    new TestExplorerProvider(dataProvider, ctx);
+    new TestExplorerProvider(ctx);
 
-    const runnableProvider = new RunnableDataProvider();
-    vscode.window.createTreeView('runnableExplorer', {
-        "treeDataProvider": runnableProvider,
-        "showCollapseAll": true,
-        "canSelectMany": true,
-    });
+    // const runnableProvider = new RunnableDataProvider();
+    // vscode.window.createTreeView('runnableExplorer', {
+    //     "treeDataProvider": runnableProvider,
+    //     "showCollapseAll": true,
+    //     "canSelectMany": true,
+    // });
 }
 
 async function initCommonContext(context: vscode.ExtensionContext, ctx: Ctx) {

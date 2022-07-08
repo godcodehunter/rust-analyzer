@@ -158,7 +158,6 @@ impl GlobalState {
         }
 
         self.run_executor();
-        self.process_runnables();
 
         self.fetch_workspaces_queue.request_op();
         if self.fetch_workspaces_queue.should_start_op() {
@@ -459,6 +458,8 @@ impl GlobalState {
                     self.update_diagnostics()
                 }
             }
+
+            self.process_runnables();
         }
 
         if let Some(diagnostic_changes) = self.diagnostics.take_changes() {
@@ -822,78 +823,78 @@ impl GlobalState {
         // TODO: ... 
         // if self.followed_data.contains(&crate::global_state::FollowedData::TestsView) {
         //   
-        // }
-
+        // }      
+        
         let analysis_host = self.analysis_host.clone();
         let sender = self.sender.clone();
+        let analysis = analysis_host.lock().analysis();
 
         self.task_pool.handle.spawn_silent(move | | {
-            loop {
-                /// TODO: ...
-                let rnbl = (analysis_host.lock().raw_database() as &dyn RunnableDatabase).workspace_runnables();
-                eprintln!("try worpspace runnable: {:?}", rnbl);
+            let result = analysis.with_db(|db| { 
+                let rnbl = (db as &dyn RunnableDatabase).workspace_runnables();
+                eprintln!("{:?}", rnbl);
+            });
+
+            let mut patch = ide_db::runnables::patch().lock().unwrap();
+            if !patch.is_empty() {
+                // let mut conv_patch = lsp_ext::Patch::default();
+                // {
+                //     conv_patch.id = patch.id;
+
+                //     conv_patch.delete = patch.delete.iter().map(|item| {
+                //         lsp_ext::Delete {
+                //             target_id: item.target_id,
+                //             item_id: item.item_id,
+                //         }
+                //     }).collect();
+
+                //     conv_patch.append = patch.append.iter().map(|i| {
+                //         let item = match i.item {
+                //             ide_db::runnables::Content::Node(ref node) => {
+                //                 match node {
+                //                     ide_db::runnables::Node::Module(ref module) => {
+                //                         lsp_ext::Item::Module(
+                //                             lsp_ext::Module {
+                //                                 id: module.id,
+                //                                 name: module.name.clone(),
+                //                                 location: "TODO".to_string(),
+                //                             }
+                //                         )
+                //                     },
+                //                     _ => todo!(),   
+                //                 }
+                //             },
+                //             ide_db::runnables::Content::Leaf(ref runnable) => {
+                //                 match runnable {
+                //                     ide_db::runnables::Runnable::Function(ref func) => {
+                //                         lsp_ext::Item::Function(lsp_ext::Function {
+                //                             id: func.id,
+                //                             name: func.name.clone(),
+                //                             location: "TODO".to_string(),
+                //                         })
+                //                     },
+                //                     _ => todo!(),
+                //                 }
+                //             },
+                //         };
+                //         lsp_ext::Append {
+                //             target_id: i.target_id,
+                //             item,
+                //         }
+                //     }).collect();
+
+                //     conv_patch.update = patch.update.iter().map(|item| {
+                //         todo!()
+                //     }).collect();
+                // }
                 
-                let mut patch = ide_db::runnables::patch().lock().unwrap();
-                if !patch.is_empty() {
-                    eprintln!("patch");
-                    let mut conv_patch = lsp_ext::Patch::default();
-                    {
-                        conv_patch.id = patch.id;
-
-                        conv_patch.delete = patch.delete.iter().map(|item| {
-                            lsp_ext::Delete {
-                                target_id: item.target_id,
-                                item_id: item.item_id,
-                            }
-                        }).collect();
-
-                        conv_patch.append = patch.append.iter().map(|i| {
-                            let item = match i.item {
-                                ide_db::runnables::RunnableView::Node(ref node) => {
-                                    match node {
-                                        ide_db::runnables::Node::Module(ref module) => {
-                                            lsp_ext::Item::Module(
-                                                lsp_ext::Module {
-                                                    id: module.id,
-                                                    name: module.name.clone(),
-                                                    location: "TODO".to_string(),
-                                                }
-                                            )
-                                        },
-                                        _ => todo!(),   
-                                    }
-                                },
-                                ide_db::runnables::RunnableView::Leaf(ref runnable) => {
-                                    match runnable {
-                                        ide_db::runnables::Runnable::Function(ref func) => {
-                                            lsp_ext::Item::Function(lsp_ext::Function {
-                                                id: func.id,
-                                                name: func.name.clone(),
-                                                location: "TODO".to_string(),
-                                            })
-                                        },
-                                        _ => todo!(),
-                                    }
-                                },
-                            };
-                            lsp_ext::Append {
-                                target_id: i.target_id,
-                                item,
-                            }
-                        }).collect();
-
-                        conv_patch.update = patch.update.iter().map(|item| {
-                            todo!()
-                        }).collect();
-                    }
-                    
-                    // TODO: it is just ilining of `self.send_notification` and internal call of `send`,
-                    // becouse we can have partial borrowing only at on the border with a closure
-                    let not = lsp_server::Notification::new(lsp_ext::RunStatusNotification::METHOD.to_string(), conv_patch);
-                    sender.send(not.into()).unwrap();
-                    
-                    patch.was_consumed();
-                }
+                // eprint!("Send patch: {:?}", patch);
+                // // TODO: it is just ilining of `self.send_notification` and internal call of `send`,
+                // // becouse we can have partial borrowing only at on the border with a closure
+                // let not = lsp_server::Notification::new(lsp_ext::DataUpdate::METHOD.to_string(), conv_patch);
+                // sender.send(not.into()).unwrap();
+                
+                patch.was_consumed();
             }
         });
     }

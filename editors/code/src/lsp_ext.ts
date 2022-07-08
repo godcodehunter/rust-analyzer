@@ -4,6 +4,7 @@
 
 import { TestMessage } from "vscode";
 import * as lc from "vscode-languageclient";
+import { number } from "vscode-languageclient/lib/common/utils/is";
 
 export interface AnalyzerStatusParams {
     textDocument?: lc.TextDocumentIdentifier;

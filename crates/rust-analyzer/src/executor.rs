@@ -1,6 +1,6 @@
 use hir::ModuleDef;
 use ide_db::base_db::Upcast;
-use ide_db::runnables::{Id, RunnableDatabase, RunnableView};
+use ide_db::runnables::{Id, RunnableDatabase, Content};
 use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use std::process::{Child, Command};
@@ -101,72 +101,73 @@ impl Executor {
                     continue;
                 }
 
-                let mut rnbl = None;
-                let workspace_rnbl = self.snapshot().workspace_runnables();
-                for crate_rnbls in workspace_rnbl.iter() {
-                    for file_rnbls in crate_rnbls.1.iter() {
-                        rnbl = file_rnbls.1.get_rnbl_by_id(id);
-                        if rnbl.is_some() {
-                            break;
-                        }
-                    }
-                }
+                
+                // let mut rnbl = None;
+                // let workspace_rnbl = self.snapshot().workspace_runnables();
+                // for crate_rnbls in workspace_rnbl.iter() {
+                //     for file_rnbls in crate_rnbls.1.iter() {
+                //         rnbl = file_rnbls.1.get_rnbl_by_id(id);
+                //         if rnbl.is_some() {
+                //             break;
+                //         }
+                //     }
+                // }
 
-                if rnbl.is_none() {
-                    tracing::error!("impossible run test with id: {:?}, because it is unexist", id);
-                    continue;
-                }
+                // if rnbl.is_none() {
+                //     tracing::error!("impossible run test with id: {:?}, because it is unexist", id);
+                //     continue;
+                // }
 
-                let full_path;
-                match rnbl.unwrap() {
-                    RunnableView::Node(_) => {
-                        tracing::error!("id: {:?} corresponding to the node, but must to leaf", id);
-                        continue;
-                    }
-                    RunnableView::Leaf(leaf) => match leaf {
-                        ide_db::runnables::Runnable::Function(func) => {
-                            full_path =
-                                ModuleDef::from(func.location).canonical_path(self.snapshot().upcast()).unwrap();
-                        }
-                        ide_db::runnables::Runnable::Doctest(_) => todo!(),
-                    },
-                }
+                // let full_path;
+                // match rnbl.unwrap() {
+                //     RunnableView::Node(_) => {
+                //         tracing::error!("id: {:?} corresponding to the node, but must to leaf", id);
+                //         continue;
+                //     }
+                //     RunnableView::Leaf(leaf) => match leaf {
+                //         ide_db::runnables::Runnable::Function(func) => {
+                //             full_path =
+                //                 ModuleDef::from(func.location).canonical_path(self.snapshot().upcast()).unwrap();
+                //         }
+                //         ide_db::runnables::Runnable::Doctest(_) => todo!(),
+                //     },
+                // }
 
-                // For more info read https://doc.rust-lang.org/cargo/commands/cargo-test.html
-                // Options passed to libtest https://doc.rust-lang.org/rustc/tests/index.html
-                let result = Command::new("cargo")
-                    .args([
-                        "test",
-                        full_path.as_str(),
-                        "--",
-                        "--exact",
-                        "--nocapture",
-                        "--message-format=json",
-                        "-Zunstable-options",
-                        "--report-time",
-                    ])
-                    .spawn();
+                // // For more info read https://doc.rust-lang.org/cargo/commands/cargo-test.html
+                // // Options passed to libtest https://doc.rust-lang.org/rustc/tests/index.html
+                // let result = Command::new("cargo")
+                //     .args([
+                //         "test",
+                //         full_path.as_str(),
+                //         "--",
+                //         "--exact",
+                //         "--nocapture",
+                //         "--message-format=json",
+                //         "-Zunstable-options",
+                //         "--report-time",
+                //     ])
+                //     .spawn();
 
-                match result {
-                    Ok(child) => {
-                        self.executing.insert(id, child);
-                    }
-                    Err(err) => {
-                        self.current_status.insert(
-                            id,
-                            RunStatus {
-                                state: ExectuinState::Errored,
-                                message: todo!(),
-                                duration: todo!(),
-                            },
-                        );
-                        tracing::error!(
-                            "when trying to run test with id: {:?}, occurred error: {:?}",
-                            id,
-                            err
-                        )
-                    }
-                }
+                // match result {
+                //     Ok(child) => {
+                //         self.executing.insert(id, child);
+                //     }
+                //     Err(err) => {
+                //         self.current_status.insert(
+                //             id,
+                //             RunStatus {
+                //                 state: ExectuinState::Errored,
+                //                 message: todo!(),
+                //                 duration: todo!(),
+                //             },
+                //         );
+                //         tracing::error!(
+                //             "when trying to run test with id: {:?}, occurred error: {:?}",
+                //             id,
+                //             err
+                //         )
+                //     }
+                // }
             }
         }
     }

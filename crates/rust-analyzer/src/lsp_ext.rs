@@ -590,21 +590,21 @@ pub struct Patch {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Delete {
-    pub target_id: usize,
-    pub item_id: usize,
+    pub target_id: u128,
+    pub item_id: u128,
 } 
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Update {
-    pub target_id: usize,
+    pub target_id: u128,
     pub changes: Changes, 
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Append {
-    pub target_id: usize,
+    pub target_id: u128,
     pub item: Item,
 }
 
@@ -645,7 +645,7 @@ pub struct Crate {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Module {
-    pub id: usize,
+    pub id: u128,
     pub name: String,
     pub location: String,
 }
@@ -653,7 +653,7 @@ pub struct Module {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Function {
-    pub id: usize,
+    pub id: u128,
     pub name: String,
     pub location: String,
     // range: [[number, number], [number, number]];

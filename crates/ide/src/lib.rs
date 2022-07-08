@@ -667,7 +667,7 @@ impl Analysis {
     ///
     /// Salsa implements cancelation by unwinding with a special value and
     /// catching it on the API boundary.
-    fn with_db<F, T>(&self, f: F) -> Cancellable<T>
+    pub fn with_db<F, T>(&self, f: F) -> Cancellable<T>
     where
         F: FnOnce(&RootDatabase) -> T + std::panic::UnwindSafe,
     {

@@ -21,9 +21,6 @@ use algo::*;
 pub use runnable_view::*;
 pub use delta_patches::*;
 
-pub type WorkspaceRunnables = FxHashMap<Crate, CrateRunnables>;
-type CrateRunnables = FxHashMap<FileId, RunnableView>;
-
 // TODO: Dirty code, probably it should be, for example, member of [hir::Crate]
 fn crate_source_root(db: &dyn RunnableDatabase, krate: Crate) -> Arc<SourceRoot> {
     let module = krate.root_module(db.upcast());
@@ -35,52 +32,69 @@ fn crate_source_root(db: &dyn RunnableDatabase, krate: Crate) -> Arc<SourceRoot>
 
 lazy_static! {
     static ref PATCH: Mutex<Patch> =  Mutex::new(Patch::default());
-    static ref WORKSPACE_VIEW: WorkspaceRunnables = WorkspaceRunnables::default();
 }
 
 #[salsa::query_group(RunnableDatabaseStorage)]
 pub trait RunnableDatabase:
     hir::db::HirDatabase + Upcast<dyn hir::db::HirDatabase> + SourceDatabaseExt
 {
-    fn workspace_runnables(&self) -> WorkspaceRunnables;
-    fn crate_runnables(&self, krait: Crate) -> CrateRunnables;
-    fn file_runnables(&self, file_id: FileId) -> Option<RunnableView>;
+    fn workspace_runnables(&self) -> Session;
+    fn crate_runnables(&self, krait: Crate) -> Option<runnable_view::Crate>;
+    fn file_runnables(&self, file_id: FileId) -> Option<runnable_view::Module>;
 }
 
 pub fn patch() -> &'static Mutex<Patch> {
     &*PATCH
 }
 
-fn workspace_runnables(db: &dyn RunnableDatabase) -> WorkspaceRunnables {
+fn workspace_runnables(db: &dyn RunnableDatabase) -> Session {
     let _p = profile::span("workspace_runnables");
 
-    let mut res = WorkspaceRunnables::default();
+    let mut res = Session{ packages: Default::default()};
     for krate in Crate::all(db.upcast()) {
         // Excludes libraries and process only what is relevant to the working project
         if !crate_source_root(db, krate).is_library {
-            res.insert(krate, db.crate_runnables(krate));
+            if let Some(krate) = db.crate_runnables(krate) {
+                let mut patch = patch().lock().unwrap();
+                // TODO
+                let mut mutator = ItemMutator::new(None, &mut patch);
+                mutator.append(AppendItem::Crate(krate));
+            }
         }
     }
     res
 }
 
-fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> CrateRunnables {
+fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> Option<runnable_view::Crate> {
     let _p = profile::span("crate_runnables");
 
     let source_root = crate_source_root(db, krate);
 
-    let mut res = CrateRunnables::default();
+    let mut res = runnable_view::Crate{ 
+        id: uuid::Uuid::new_v4().as_u128(), 
+        // TODO: why it is can be optional? 
+        name: (krate.display_name(db.upcast()).unwrap()).to_string(), 
+        modules: Default::default(),
+    };
+
     for file_id in source_root.iter() {
         if let Some(runnables) = db.file_runnables(file_id) {
-            res.insert(file_id, runnables);
+            let mut patch = patch().lock().unwrap();
+            let mut mutator = ItemMutator::new(Some(RefNode::Crate(& mut res)), &mut patch);
+            mutator.append(AppendItem::Module(runnables));
         }
     }
-    res
+    
+    if !res.modules.is_empty() {
+        return Some(res);
+    }
+
+    None
 }
 
-fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<RunnableView> {
+fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Module> {
     fn store_runnables(
-        res: &mut Option<RunnableView>,
+        res: &mut Option<Module>,
         path: &mut MutalPath,
         patch: &mut Patch,
         runnables: &[Runnable],
@@ -92,18 +106,19 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Runnable
             if point.0 == 0 {
                 let mut first = path.first_mut().unwrap();
 
-                res.replace(RunnableView::Node(Node::Module(Module {
-                    // TODO: id 
-                    id: 1,
+                let item = Module {
+                    id: uuid::Uuid::new_v4().as_u128(),
                     name: "TODO_MODULE".to_string(),
                     location: first.origin,
                     content: Default::default(),
-                })));
+                };
 
-                match res.as_mut().unwrap() {
-                    RunnableView::Node(Node::Module(m)) => first.accord = Some(m),
-                    _ => unreachable!(),
-                }
+                res.replace(item.clone());
+                          
+                let mut mutator = ItemMutator::new(Some(RefNode::Module(res.as_mut().unwrap())), patch);
+                mutator.append(AppendItem::Module(item));
+                
+                first.accord = Some(res.as_mut().unwrap());
 
                 if path.len() == 1 {
                     diff_point = None;
@@ -118,9 +133,16 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Runnable
         }
 
         unsafe {
-            let content = &mut (*path.last_mut().unwrap().accord.unwrap()).content;
-
-            content.extend(runnables.into_iter().map(|i| RunnableView::Leaf(i.clone())));
+            let module = &mut (*path.last_mut().unwrap().accord.unwrap());
+            let mut mutator = ItemMutator::new(Some(RefNode::Module(module)), patch);
+            let iter = runnables.into_iter().map(|item| {
+                let i = match item {
+                    Runnable::Function(func) => func,
+                    Runnable::Doctest(_) => todo!(),
+                };
+                AppendItem::Function(i.clone())
+            });
+            mutator.append_many(iter);
         }
     }
 
@@ -267,7 +289,7 @@ fn validate_bench_signature() {
 }
 
 /// Creates a test mod runnable for outline modules at the top of their definition.
-fn runnable_mod_outline_definition(sema: &Semantics, def: hir::Module) -> Option<RunnableView> {
+fn runnable_mod_outline_definition(sema: &Semantics, def: hir::Module) -> Option<Content> {
     // if !is_contains_runnable(sema, &def) {
     //     return None;
     // }
@@ -298,7 +320,7 @@ fn has_doctest<AtrOwner: HasAttrs>(
         return None;
     }
 
-    Some(Runnable::Doctest(Doctest { location: todo!() }))
+    Some(Runnable::Doctest(Doctest { id: todo!(), location: todo!() }))
 }
 
 /// Checks if a [hir::Function] is runnable and if it is, then construct [Runnable] from it

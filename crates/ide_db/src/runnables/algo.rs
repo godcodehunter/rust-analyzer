@@ -32,17 +32,17 @@ pub fn syn_branches<'path>(
     let last_sync = iter.next().unwrap();
 
     iter.fold(last_sync, |cur: &mut Bijection, next: &mut Bijection| -> &mut Bijection {
-        let node = Node::Module(Module { 
-            id: todo!(), 
-            name: todo!(), 
+        let node = Module { 
+            id: uuid::Uuid::new_v4().as_u128(), 
+            name: "TODO".to_string(), 
             location: next.origin, 
             content: Default::default(), 
-        });
+        };
         
         unsafe {
-            let mutator = ItemMutator::new(&mut Node::Module(*cur.accord.unwrap()), patch);
-            mutator.append(RunnableView::Node(node));
-            if let RunnableView::Node(Node::Module(ref mut m)) = (*cur.accord.unwrap()).content.last_mut().unwrap() {
+            let mut mutator = ItemMutator::new(Some(RefNode::Module(&mut *cur.accord.unwrap())), patch);
+            mutator.append(AppendItem::Module(node));
+            if let Content::Node(Node::Module(ref mut m)) = (*cur.accord.unwrap()).content.last_mut().unwrap() {
                 next.accord = Some(m);
             }
         }
