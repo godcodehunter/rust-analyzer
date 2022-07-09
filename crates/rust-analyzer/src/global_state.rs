@@ -19,6 +19,7 @@ use vfs::AnchoredPathBuf;
 use crate::{
     config::Config,
     diagnostics::{CheckFixes, DiagnosticCollection},
+    executor::Executor,
     from_proto,
     line_index::{LineEndings, LineIndex},
     lsp_ext,
@@ -30,6 +31,11 @@ use crate::{
     to_proto::url_from_abs_path,
     Result,
 };
+
+#[derive(Hash, PartialEq, Eq)]
+pub(crate) enum FollowedData {
+    TestsView,
+}
 
 // Enforces drop order
 pub(crate) struct Handle<H, C> {
@@ -48,13 +54,19 @@ pub(crate) type ReqQueue = lsp_server::ReqQueue<(String, Instant), ReqHandler>;
 ///
 /// Note that this struct has more than one impl in various modules!
 pub(crate) struct GlobalState {
-    sender: Sender<lsp_server::Message>,
+    /// The sendind side of one of the two channels, 
+    /// that together represent the [LSP protocol connection](lsp_server::Connection)
+    pub(crate) sender: Sender<lsp_server::Message>,
+    /// Manages the set of pending requests, both incomming and outgoing.
     req_queue: ReqQueue,
+    /// Pool of tasks that execute in the background
     pub(crate) task_pool: Handle<TaskPool<Task>, Receiver<Task>>,
     pub(crate) loader: Handle<Box<dyn vfs::loader::Handle>, Receiver<vfs::loader::Message>>,
+    /// Configuration for server  
     pub(crate) config: Arc<Config>,
-    pub(crate) analysis_host: AnalysisHost,
+    pub(crate) analysis_host: Arc<Mutex<AnalysisHost>>,
     pub(crate) diagnostics: DiagnosticCollection,
+    /// Holds the set of in-memory documents.
     pub(crate) mem_docs: MemDocs,
     pub(crate) semantic_tokens_cache: Arc<Mutex<FxHashMap<Url, SemanticTokens>>>,
     pub(crate) shutdown_requested: bool,
@@ -104,6 +116,11 @@ pub(crate) struct GlobalState {
         OpQueue<(Arc<Vec<ProjectWorkspace>>, Vec<anyhow::Result<WorkspaceBuildScripts>>)>,
 
     pub(crate) prime_caches_queue: OpQueue<()>,
+
+    /// Contains the data that the client wants to synchronize
+    pub(crate) followed_data: std::collections::HashSet<FollowedData>,
+    /// Manages test runs: run tests, abort tests, provide the run status.
+    pub(crate) executor: Arc<Mutex<Executor>>,
 }
 
 /// An immutable snapshot of the world's state at a point in time.
@@ -135,8 +152,11 @@ impl GlobalState {
             Handle { handle, receiver }
         };
 
-        let analysis_host = AnalysisHost::new(config.lru_capacity());
+        let analysis_host = Arc::new(Mutex::new(AnalysisHost::new(config.lru_capacity())));
         let (flycheck_sender, flycheck_receiver) = unbounded();
+
+        let mut followed_data: std::collections::HashSet<FollowedData> = Default::default();
+        followed_data.insert(crate::global_state::FollowedData::TestsView);
         let mut this = GlobalState {
             sender,
             req_queue: ReqQueue::default(),
@@ -168,6 +188,8 @@ impl GlobalState {
             prime_caches_queue: OpQueue::default(),
 
             fetch_build_data_queue: OpQueue::default(),
+            executor: Default::default(),
+            followed_data,
         };
         // Apply any required database inputs from the config.
         this.update_configuration(config);
@@ -241,7 +263,7 @@ impl GlobalState {
         GlobalStateSnapshot {
             config: Arc::clone(&self.config),
             workspaces: Arc::clone(&self.workspaces),
-            analysis: self.analysis_host.analysis(),
+            analysis: self.analysis_host.lock().analysis(),
             vfs: Arc::clone(&self.vfs),
             check_fixes: Arc::clone(&self.diagnostics.check_fixes),
             mem_docs: self.mem_docs.clone(),

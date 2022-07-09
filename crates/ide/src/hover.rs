@@ -295,20 +295,44 @@ fn runnable_action(
     def: Definition,
     file_id: FileId,
 ) -> Option<HoverAction> {
-    match def {
-        Definition::Module(it) => runnable_mod(sema, it).map(HoverAction::Runnable),
-        Definition::Function(func) => {
-            let src = func.source(sema.db)?;
-            if src.file_id != file_id.into() {
-                cov_mark::hit!(hover_macro_generated_struct_fn_doc_comment);
-                cov_mark::hit!(hover_macro_generated_struct_fn_doc_attr);
-                return None;
-            }
+    use ide_db::runnables::*;
 
-            runnable_fn(sema, func).map(HoverAction::Runnable)
+    let rnb: &dyn RunnableDatabase = sema.db.upcast();
+    let rnbls = rnb.file_runnables(file_id);
+    if let (Some(module), Definition::ModuleDef(mod_def)) = (rnbls, def) {
+        match mod_def {
+            hir::ModuleDef::Module(it) => {
+                return find_by_def(IterItem::Module(&module), it)
+                        .map(|i| { 
+                            let r = match i {
+                                IterItem::Module(module) => Content::Node(Node::Module(module.clone())),
+                                _ => unreachable!(),
+                            };
+                            HoverAction::Runnable(self::Runnable::from_db_repr(db, sema, &r))
+                        });
+            }
+            hir::ModuleDef::Function(it) => {
+                let src = it.source(sema.db)?;
+                if src.file_id != file_id.into() {
+                    cov_mark::hit!(hover_macro_generated_struct_fn_doc_comment);
+                    cov_mark::hit!(hover_macro_generated_struct_fn_doc_attr);
+                    return None;
+                }
+
+                return find_by_def(IterItem::Module(&module), it)
+                        .map(|i| { 
+                            let r = match i {
+                                IterItem::RunnableFunc(func) => Content::Leaf(Runnable::Function(func.clone())),
+                                _ => unreachable!(),
+                            };
+                            HoverAction::Runnable(self::Runnable::from_db_repr(db, sema, &r))
+                        });
+            }
+            _ => {}
         }
-        _ => None,
     }
+
+    None
 }
 
 fn goto_type_action_for_def(db: &RootDatabase, def: Definition) -> Option<HoverAction> {

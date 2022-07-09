@@ -2,7 +2,9 @@
  * This file mirrors `crates/rust-analyzer/src/lsp_ext.rs` declarations.
  */
 
+import { TestMessage } from "vscode";
 import * as lc from "vscode-languageclient";
+import { number } from "vscode-languageclient/lib/common/utils/is";
 
 export interface AnalyzerStatusParams {
     textDocument?: lc.TextDocumentIdentifier;
@@ -178,3 +180,96 @@ export const enum Direction {
     Up = "Up",
     Down = "Down",
 }
+
+export const moveItem = new lc.RequestType<MoveItemParams, lc.TextEdit[], void>("experimental/moveItem");
+
+export const dataUpdate = new lc.NotificationType<any>("data/update");
+
+export enum RunKind {
+    Run,
+    Debug,
+}
+
+export interface RunTestsParams {
+    include?: string[];
+    exclude?: string[];
+    runKind: RunKind;
+};
+
+export const runTests = new lc.RequestType<RunTestsParams, void, void>("experimental/runTests");
+
+export interface AbortTestsParams {
+    exact: string[];
+}
+
+export const abortTests = new lc.RequestType<AbortTestsParams, void, void>("experimenral/abortTests");
+
+export enum RunStatusUpdateKind {
+    Started = 0,
+    Failed = 1,
+    Errored = 2,
+    Passed = 3,
+    Skiped = 4,
+    Finish = 5,
+    RawOutput = 6,
+}
+
+export type RunStatusUpdate = (Started | Failed | Errored | Passed | RawOutput | Skiped | Finish)[];
+
+export interface Skiped {
+    kind: RunStatusUpdateKind.Skiped;
+    id: string;
+};
+
+export interface Finish {
+    kind: RunStatusUpdateKind.Finish;
+};
+
+export interface Started {
+    kind: RunStatusUpdateKind.Started;
+    id: string;
+};
+
+export interface Failed {
+    kind: RunStatusUpdateKind.Failed;
+    id: string;
+    message: TestMessage | TestMessage[];
+    duration: number;
+};
+
+export interface Errored {
+    kind: RunStatusUpdateKind.Errored;
+    id: string;
+    message: TestMessage | TestMessage[];
+    duration: number;
+};
+
+export interface Passed {
+    kind: RunStatusUpdateKind.Passed;
+    id: string;
+    duration: number;
+};
+
+export interface RawOutput {
+    kind: RunStatusUpdateKind.RawOutput;
+    id: string;
+    message: string;
+};
+
+export const runStatus = new lc.NotificationType<RunStatusUpdate>("experimental/runStatusUpdate");
+
+export interface SubscriptionRequestParams {
+    data_objects: string[];
+};
+
+export interface SubscriptionError {
+    describtion: string;
+    targets: string[];
+}
+
+export interface SubscriptionResponce {
+    errors: SubscriptionError[];
+    success: string[];
+};
+
+export const subscription = new lc.RequestType<SubscriptionRequestParams, SubscriptionResponce, void>("experimental/subscription");

@@ -31,6 +31,7 @@ use stdx::{format_to, never};
 use syntax::{algo, ast, AstNode, TextRange, TextSize, T};
 use vfs::AbsPathBuf;
 
+use crate::{global_state::FollowedData, lsp_ext::{RunTestsParams, AbortTestsParams, UnsubscriptionRequestParams}};
 use crate::{
     cargo_target_spec::CargoTargetSpec,
     config::{RustfmtConfig, WorkspaceSymbolConfig},
@@ -42,6 +43,7 @@ use crate::{
     lsp_utils::{all_edits_are_disjoint, invalid_params_error},
     to_proto, LspError, Result,
 };
+use std::collections::HashSet;
 
 pub(crate) fn handle_workspace_reload(state: &mut GlobalState, _: ()) -> Result<()> {
     state.proc_macro_client = None;
@@ -89,9 +91,92 @@ pub(crate) fn handle_analyzer_status(
     Ok(buf)
 }
 
+pub(crate) fn handle_subscription(
+    state: &mut GlobalState,
+    params: lsp_ext::SubscriptionRequestParams,
+) -> Result<SubscriptionResponce> {
+    let mut unknown = HashSet::new();
+    let mut already_sync = HashSet::new();
+    let mut multiple = HashSet::new();
+    let mut success = HashSet::new();
+
+    for item in params.data_objects {
+        match item.as_str() {
+            "tests_view" => {
+                if state.followed_data.insert(FollowedData::TestsView) {
+                    if success.get(&item).is_none() {
+                        success.insert(item);
+                    } else {
+                        multiple.insert(item);
+                    }
+                } else {
+                    if already_sync.get(&item).is_none() {
+                        already_sync.insert(item);
+                    } else {
+                        multiple.insert(item);
+                    }
+                }
+            }
+            _ => {
+                if unknown.get(&item).is_none() {
+                    unknown.insert(item);
+                } else {
+                    multiple.insert(item);
+                }
+            }
+        }
+    }
+
+    let mut errors = Vec::new();
+    if !unknown.is_empty() {
+        errors
+            .push(SubscriptionError { describtion: "Unknown views".to_string(), targets: unknown });
+    }
+
+    if !already_sync.is_empty() {
+        errors.push(SubscriptionError {
+            describtion: "Views already synchronized".to_string(),
+            targets: already_sync,
+        });
+    }
+
+    if !multiple.is_empty() {
+        errors.push(SubscriptionError {
+            describtion: "Repeated multiple times".to_string(),
+            targets: multiple,
+        });
+    }
+
+    for view in success.iter() {
+        match view.as_str() {
+            "tests_view" => state.followed_data.insert(FollowedData::TestsView),
+            _ => unreachable!(),
+        };
+    }
+
+    Ok(SubscriptionResponce { errors, success })
+}
+
+pub(crate) fn handle_unsubscription(state: &mut GlobalState, params: UnsubscriptionRequestParams) -> Result<()> {
+    todo!()
+}
+
+pub(crate) fn handle_run_tests(state: &mut GlobalState, params: RunTestsParams) -> Result<()> {
+    // TODO: params.exclude, params.run_kind
+    // TODO: id type
+    state.executor.lock().run_tests(params.include.into_iter().map(|i| i.parse::<u128>().unwrap()));
+    Ok(())
+}
+
+pub(crate) fn handle_abort_tests(state: &mut GlobalState, params: AbortTestsParams) -> Result<()> {
+    let ids = params.exact.into_iter().map(|i| i.parse::<u128>().unwrap());
+    state.executor.lock().abort_tests(ids);
+    Ok(())
+}
+
 pub(crate) fn handle_memory_usage(state: &mut GlobalState, _: ()) -> Result<String> {
     let _p = profile::span("handle_memory_usage");
-    let mut mem = state.analysis_host.per_query_memory_usage();
+    let mut mem = state.analysis_host.lock().per_query_memory_usage();
     mem.push(("Remaining".into(), profile::memory_usage().allocated));
 
     let mut out = String::new();

@@ -75,7 +75,7 @@
             "debug": [
                 {
                     "id": "runnableExplorer",
-                    "name": "Runnable Explorer"
+                    "name": "Runnable"
                 }
             ]
         },

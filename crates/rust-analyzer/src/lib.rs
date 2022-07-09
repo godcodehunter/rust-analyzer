@@ -9,6 +9,10 @@
 //! The `cli` submodule implements some batch-processing analysis, primarily as
 //! a debugging aid.
 
+#![feature(map_try_insert)]
+#![feature(exit_status_error)]
+#![feature(capture_disjoint_fields)]
+
 pub mod cli;
 
 #[allow(unused)]
@@ -38,6 +42,7 @@ mod version;
 
 pub mod config;
 pub mod lsp_ext;
+mod executor;
 
 #[cfg(test)]
 mod integrated_benchmarks;
