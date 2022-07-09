@@ -1,4 +1,4 @@
-use super::{Node, Module, Id, runnable_view::{MacroCall, Content, RunnableFuncKind, RunnableFunc, Crate, self, Runnable}};
+use super::{Node, Module, Id, runnable_view::{MacroCall, Content, RunnableFuncKind, RunnableFunc, Crate, self, Runnable, Session}};
 use serde::{Deserialize, Serialize};
 
 pub trait Mutator<Id, AppendItem, Changes> {
@@ -100,6 +100,7 @@ pub enum Changes {
 }
 
 pub enum RefNode<'a> {
+    Session(&'a mut Session),
     Crate(&'a mut Crate),
     Module(&'a mut Module),
     MacroCall(&'a mut MacroCall),
@@ -107,22 +108,18 @@ pub enum RefNode<'a> {
 
 pub struct ItemMutator<'a, 'b> {
     /// Represent target node or if not presented, assume that root node 
-    target: Option<RefNode<'a>>,
+    target: RefNode<'a>,
     patch: &'b mut Patch,
 }
 
 impl<'a, 'b> ItemMutator<'a, 'b> {
-    pub fn new(node: Option<RefNode<'a>>, patch: &'b mut Patch) -> Self { 
+    pub fn new(node: RefNode<'a>, patch: &'b mut Patch) -> Self { 
         Self { target: node, patch } 
     }
 
-    /// Return node id or for root `0`
     fn target_id(&self) -> Id {
-        self.target.as_ref().map_or(0, Self::node_id)
-    }
-
-    fn node_id(node: &RefNode<'_>) -> Id {
-        match node {
+        match &self.target {
+            RefNode::Session(_) => 0,
             RefNode::Crate(krate) => krate.id,
             RefNode::MacroCall(macrocall) => macrocall.id,
             RefNode::Module(module) => module.id,
@@ -132,109 +129,113 @@ impl<'a, 'b> ItemMutator<'a, 'b> {
 
 impl<'a, 'b> Mutator<Id, AppendItem, Changes> for ItemMutator<'a, 'b> {
     fn delete(&mut self, id: Id) {
-        if let Some(ref mut node) = self.target {
-            match node {
-                RefNode::Crate(krate) => {
-                    let index = krate.modules.iter()
-                        .position(|item| item.id == id)
-                        .unwrap();
-                },
-                RefNode::MacroCall(macrocall) => {
-                    let index = macrocall.content.iter()
-                        .position(|item| {
-                            match item {
-                                Content::Node(node) => todo!(),
-                                Content::Leaf(leaf) => todo!(),
-                            }
-                        })
-                        .unwrap();
-                    macrocall.content.remove(index);
-                },
-                RefNode::Module(module) => {
-                    let index = module.content.iter()
-                        .position(|item| {
-                            match item {
-                                Content::Node(node) => todo!(),
-                                Content::Leaf(leaf) => todo!(),
-                            }
-                        })
-                        .unwrap();
-                    module.content.remove(index);
-                },
-            }
+        match &mut self.target {
+            RefNode::Session(_) => {todo!()},
+            RefNode::Crate(krate) => {
+                let index = krate.modules.iter()
+                    .position(|item| item.id == id)
+                    .unwrap();
+            },
+            RefNode::MacroCall(macrocall) => {
+                let index = macrocall.content.iter()
+                    .position(|item| {
+                        match item {
+                            Content::Node(node) => todo!(),
+                            Content::Leaf(leaf) => todo!(),
+                        }
+                    })
+                    .unwrap();
+                macrocall.content.remove(index);
+            },
+            RefNode::Module(module) => {
+                let index = module.content.iter()
+                    .position(|item| {
+                        match item {
+                            Content::Node(node) => todo!(),
+                            Content::Leaf(leaf) => todo!(),
+                        }
+                    })
+                    .unwrap();
+                module.content.remove(index);
+            },
         }
         
         self.patch.delete(self.target_id(), id);
     }
 
     fn append(&mut self, item: AppendItem) {
-        if let Some(ref mut node) = self.target {
-            match node {
-                RefNode::Crate(krate) => {
-                    if let AppendItem::Module(ref module) = item {
-                        krate.modules.push(module.clone());
-                    }
-                    todo!()
-                },
-                RefNode::MacroCall(macrocall) => {
-                    match item {
-                        AppendItem::Crate(krate) => {
-                            // macrocall.content.push(Content::Node());
-                            todo!()
-                        },
-                        AppendItem::Module(_) => {
-                            // macrocall.content.push(item.clone());
-                            todo!()
-                        },
-                        AppendItem::Function(_) => todo!(),
-                    }
-                },
-                RefNode::Module(module) => {
-                    let i = match item {
-                        AppendItem::Crate(_) => todo!(),
-                        AppendItem::Module(ref module) => Content::Node(Node::Module(module.clone())),
-                        AppendItem::Function(ref func) => Content::Leaf(Runnable::Function(func.clone())),
-                    };
-
-                    module.content.push(i);
-                },
+        match &mut self.target {
+            RefNode::Session(session) => {
+                if let AppendItem::Crate(krate) = item.clone() {
+                    session.crates.push(krate);
+                } else {
+                    panic!("TODO");
+                }
             }
+            RefNode::Crate(krate) => {
+                if let AppendItem::Module(module) = item.clone() {
+                    krate.modules.push(module);
+                } else {
+                    panic!("TODO");
+                }
+            },
+            RefNode::MacroCall(macrocall) => {
+                match item.clone() {
+                    AppendItem::Crate(krate) => {
+                        // macrocall.content.push(Content::Node());
+                        todo!()
+                    },
+                    AppendItem::Module(_) => {
+                        // macrocall.content.push(item.clone());
+                        todo!()
+                    },
+                    AppendItem::Function(_) => todo!(),
+                }
+            },
+            RefNode::Module(module) => {
+                let i = match item {
+                    AppendItem::Crate(_) => todo!(),
+                    AppendItem::Module(ref module) => Content::Node(Node::Module(module.clone())),
+                    AppendItem::Function(ref func) => Content::Leaf(Runnable::Function(func.clone())),
+                };
+
+                module.content.push(i);
+            },
         }
 
         self.patch.append(self.target_id(), item);
     }
 
     fn update(&mut self, update: Changes) {
-        if let Some(ref mut node) = self.target {
-            match node {
-                RefNode::Crate(krate) => {
-                    todo!();
-                },
-                RefNode::MacroCall(macrocall) => {
-                    if let Changes::MacroCall {  } = update {
-                        todo!();
-                    }
-
-                    panic!("mismatched update type");
-                },
-                RefNode::Module(module) => {
-                    if let Changes::Module { ref name, ref location} = update {
-                        if let Some(name) = name {
-                            // module.name = name.clone();
-                            todo!()
-                        }
-                        if let Some(location) = location {
-                            // module.location = location;
-                            todo!()
-                        }
-                    }
-                    panic!("mismatched update type");
-                },
-            }
-        }
-
-        // self.patch.update(self.target_id(), update);
         todo!()
+        // match self.target {
+        //     RefNode::Crate(krate) => {
+        //         todo!();
+        //     },
+        //     RefNode::MacroCall(macrocall) => {
+        //         if let Changes::MacroCall {  } = update {
+        //             todo!();
+        //         }
+
+        //         panic!("mismatched update type");
+        //     },
+        //     RefNode::Module(module) => {
+        //         if let Changes::Module { ref name, ref location} = update {
+        //             if let Some(name) = name {
+        //                 // module.name = name.clone();
+        //                 todo!()
+        //             }
+        //             if let Some(location) = location {
+        //                 // module.location = location;
+        //                 todo!()
+        //             }
+        //         }
+        //         panic!("mismatched update type");
+        //     },
+        // }
+
+        // // self.patch.update(self.target_id(), update);
+        // todo!()
     }
 }
 

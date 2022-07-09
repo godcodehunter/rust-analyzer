@@ -12,7 +12,7 @@ import { fetchRelease, download } from './net';
 import { activateTaskProvider } from './tasks';
 import { setContextValue } from './util';
 import { exec, spawnSync } from 'child_process';
-import { TestDataProvider, TestExplorerProvider } from './test_explorer';
+import { TestDataProvider, TestExplorerProvider } from './runnables/test_explorer';
 
 let ctx: Ctx | undefined;
 

@@ -50,19 +50,18 @@ pub fn patch() -> &'static Mutex<Patch> {
 fn workspace_runnables(db: &dyn RunnableDatabase) -> Session {
     let _p = profile::span("workspace_runnables");
 
-    let mut res = Session{ packages: Default::default()};
+    let mut session = Session{ crates: Default::default()};
     for krate in Crate::all(db.upcast()) {
         // Excludes libraries and process only what is relevant to the working project
         if !crate_source_root(db, krate).is_library {
             if let Some(krate) = db.crate_runnables(krate) {
                 let mut patch = patch().lock().unwrap();
-                // TODO
-                let mut mutator = ItemMutator::new(None, &mut patch);
+                let mut mutator = ItemMutator::new(RefNode::Session(&mut session), &mut patch);
                 mutator.append(AppendItem::Crate(krate));
             }
         }
     }
-    res
+    session
 }
 
 fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> Option<runnable_view::Crate> {
@@ -70,17 +69,23 @@ fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> Option<runnable_v
 
     let source_root = crate_source_root(db, krate);
 
+    // TODO: why it is can be optional? 
+    let name = if let Some(name) = krate.display_name(db.upcast()) {
+        name.to_string()
+    } else {
+        "UNKNOW_CRATE_NAME".to_string()
+    };
+
     let mut res = runnable_view::Crate{ 
         id: uuid::Uuid::new_v4().as_u128(), 
-        // TODO: why it is can be optional? 
-        name: (krate.display_name(db.upcast()).unwrap()).to_string(), 
+        name, 
         modules: Default::default(),
     };
 
     for file_id in source_root.iter() {
         if let Some(runnables) = db.file_runnables(file_id) {
             let mut patch = patch().lock().unwrap();
-            let mut mutator = ItemMutator::new(Some(RefNode::Crate(& mut res)), &mut patch);
+            let mut mutator = ItemMutator::new(RefNode::Crate(& mut res), &mut patch);
             mutator.append(AppendItem::Module(runnables));
         }
     }
@@ -94,6 +99,7 @@ fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> Option<runnable_v
 
 fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Module> {
     fn store_runnables(
+        db: &dyn HirDatabase,
         res: &mut Option<Module>,
         path: &mut MutalPath,
         patch: &mut Patch,
@@ -106,16 +112,23 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Module> 
             if point.0 == 0 {
                 let mut first = path.first_mut().unwrap();
 
+                // TODO: why it is can be Optional
+                let name = if let Some(name) = first.origin.name(db) {
+                    name.to_string()
+                } else {
+                    "UNKNOW_MOD_NAME".to_string()
+                };
+
                 let item = Module {
                     id: uuid::Uuid::new_v4().as_u128(),
-                    name: "TODO_MODULE".to_string(),
+                    name,
                     location: first.origin,
                     content: Default::default(),
                 };
 
                 res.replace(item.clone());
                           
-                let mut mutator = ItemMutator::new(Some(RefNode::Module(res.as_mut().unwrap())), patch);
+                let mut mutator = ItemMutator::new(RefNode::Module(res.as_mut().unwrap()), patch);
                 mutator.append(AppendItem::Module(item));
                 
                 first.accord = Some(res.as_mut().unwrap());
@@ -129,12 +142,12 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Module> 
         }
 
         if let Some(ref dvg_point) = diff_point {
-            syn_branches(path, dvg_point, patch);
+            syn_branches(db, path, dvg_point, patch);
         }
 
         unsafe {
             let module = &mut (*path.last_mut().unwrap().accord.unwrap());
-            let mut mutator = ItemMutator::new(Some(RefNode::Module(module)), patch);
+            let mut mutator = ItemMutator::new(RefNode::Module(module), patch);
             let iter = runnables.into_iter().map(|item| {
                 let i = match item {
                     Runnable::Function(func) => func,
@@ -159,8 +172,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Module> 
 
     let sema = Semantics::new(db.upcast());
 
-    // TODO: ???? 
-    let mut patch = (*self::patch().lock().unwrap()).clone();
+    let mut patch = self::patch().lock().unwrap();
     let mut res = None;
 
     visit_file_defs_with_path(
@@ -198,7 +210,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Module> 
             }
 
             if !runnables.is_empty() {
-                store_runnables(&mut res, path, &mut patch, &runnables);
+                store_runnables(db.upcast(), &mut res, path, &mut patch, &runnables);
             }
         },
     );
@@ -215,7 +227,6 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Module> 
     //     })
     // }));
     
-    *self::patch().lock().unwrap() = patch;
     res
 }
 

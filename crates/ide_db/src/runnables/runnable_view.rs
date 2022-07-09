@@ -104,7 +104,7 @@ pub struct Crate {
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Session {
-    pub packages: Vec<Crate>, 
+    pub crates: Vec<Crate>, 
 }
 
 pub enum DefKey {
@@ -169,9 +169,21 @@ fn dfs<'tree>(root: IterItem<'tree>, mut handler: impl FnMut(IterItem<'tree>) ->
     let mut buff = vec![root];
     while let Some(item) = buff.pop() {
         match item {
-            IterItem::Session(session) => buff.extend(session.packages.iter().map(IterItem::Crate)),
+            IterItem::Session(session) => buff.extend(session.crates.iter().map(IterItem::Crate)),
             IterItem::Crate(krate) => buff.extend(krate.modules.iter().map(IterItem::Module)),
-            // IterItem::Module(m) => buff.extend(m.content.iter()),
+            IterItem::Module(m) => {
+                let iter = m.content.iter().map(|item| match item {
+                    Content::Node(node) => match node {
+                        Node::MacroCall(_) => todo!(),
+                        Node::Module(module) => IterItem::Module(module),
+                    },
+                    Content::Leaf(leaf) => match leaf {
+                        Runnable::Function(func) => IterItem::RunnableFunc(func),
+                        Runnable::Doctest(doctest) => IterItem::Doctest(doctest),
+                    },
+                });
+                buff.extend(iter);
+            },
             // IterItem::MacroCall(mc) => buff.extend(mc.content.iter()),
             _ => {},
         }
@@ -183,7 +195,7 @@ fn dfs<'tree>(root: IterItem<'tree>, mut handler: impl FnMut(IterItem<'tree>) ->
 
 // Returns an iterator over the contents of a file.
 // Note: not including the root of the file.
-pub fn flatten_content<'tree>(root: IterItem<'tree>) -> impl Iterator<Item = IterItem<'tree>> {
+pub fn flatten_content<'tree>(root: IterItem<'tree>) -> Vec<IterItem<'tree>> {
     let mut res = Vec::new();
     dfs(root.clone(), |item| {
         if item != root {
@@ -199,7 +211,7 @@ pub fn flatten_content<'tree>(root: IterItem<'tree>) -> impl Iterator<Item = Ite
         }
         false
     });
-    res.into_iter()
+    res
 }
 
 pub fn find_by_id(root: IterItem, id: Id) -> Option<IterItem> {

@@ -24,6 +24,7 @@ pub fn find_diff_point(path: &MutalPath) -> Option<DifferencePoint> {
 /// Reconstructs [RunnableView] branch and maintains consistency [MutalPath]
 /// in the process.
 pub fn syn_branches<'path>(
+    db: &dyn HirDatabase,
     path: &'path mut MutalPath, 
     dvg_point: &DifferencePoint, 
     patch: &mut Patch,
@@ -32,15 +33,22 @@ pub fn syn_branches<'path>(
     let last_sync = iter.next().unwrap();
 
     iter.fold(last_sync, |cur: &mut Bijection, next: &mut Bijection| -> &mut Bijection {
+        // TODO: why it is can be Optional
+        let name = if let Some(name) = next.origin.name(db) {
+            name.to_string()
+        } else {
+            "UNKNOW_MOD_NAME".to_string()
+        };
+        
         let node = Module { 
             id: uuid::Uuid::new_v4().as_u128(), 
-            name: "TODO".to_string(), 
+            name, 
             location: next.origin, 
             content: Default::default(), 
         };
         
         unsafe {
-            let mut mutator = ItemMutator::new(Some(RefNode::Module(&mut *cur.accord.unwrap())), patch);
+            let mut mutator = ItemMutator::new(RefNode::Module(&mut *cur.accord.unwrap()), patch);
             mutator.append(AppendItem::Module(node));
             if let Content::Node(Node::Module(ref mut m)) = (*cur.accord.unwrap()).content.last_mut().unwrap() {
                 next.accord = Some(m);

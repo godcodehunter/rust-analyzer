@@ -831,68 +831,64 @@ impl GlobalState {
 
         self.task_pool.handle.spawn_silent(move | | {
             let result = analysis.with_db(|db| { 
-                let rnbl = (db as &dyn RunnableDatabase).workspace_runnables();
-                eprintln!("{:?}", rnbl);
+                (db as &dyn RunnableDatabase).workspace_runnables()
             });
 
             let mut patch = ide_db::runnables::patch().lock().unwrap();
             if !patch.is_empty() {
-                // let mut conv_patch = lsp_ext::Patch::default();
-                // {
-                //     conv_patch.id = patch.id;
+                let mut conv_patch = lsp_ext::Patch::default();
+                {
+                    conv_patch.id = patch.id;
 
-                //     conv_patch.delete = patch.delete.iter().map(|item| {
-                //         lsp_ext::Delete {
-                //             target_id: item.target_id,
-                //             item_id: item.item_id,
-                //         }
-                //     }).collect();
+                    conv_patch.delete = patch.delete.iter().map(|item| {
+                        lsp_ext::Delete {
+                            target_id: item.target_id,
+                            item_id: item.item_id,
+                        }
+                    }).collect();
 
-                //     conv_patch.append = patch.append.iter().map(|i| {
-                //         let item = match i.item {
-                //             ide_db::runnables::Content::Node(ref node) => {
-                //                 match node {
-                //                     ide_db::runnables::Node::Module(ref module) => {
-                //                         lsp_ext::Item::Module(
-                //                             lsp_ext::Module {
-                //                                 id: module.id,
-                //                                 name: module.name.clone(),
-                //                                 location: "TODO".to_string(),
-                //                             }
-                //                         )
-                //                     },
-                //                     _ => todo!(),   
-                //                 }
-                //             },
-                //             ide_db::runnables::Content::Leaf(ref runnable) => {
-                //                 match runnable {
-                //                     ide_db::runnables::Runnable::Function(ref func) => {
-                //                         lsp_ext::Item::Function(lsp_ext::Function {
-                //                             id: func.id,
-                //                             name: func.name.clone(),
-                //                             location: "TODO".to_string(),
-                //                         })
-                //                     },
-                //                     _ => todo!(),
-                //                 }
-                //             },
-                //         };
-                //         lsp_ext::Append {
-                //             target_id: i.target_id,
-                //             item,
-                //         }
-                //     }).collect();
+                    conv_patch.append = patch.append.iter().map(|i| {
+                        let item = match i.item {
+                            ide_db::runnables::AppendItem::Crate(ref krate) => {
+                                lsp_ext::Item::Crate(lsp_ext::Crate {
+                                    id: krate.id,
+                                    name: krate.name.clone(),
+                                    location: "TODO_LOCATION".to_string(),
+                                })
+                            },
+                            ide_db::runnables::AppendItem::Function(ref func) => {
+                                lsp_ext::Item::Function(lsp_ext::Function {
+                                    id: func.id,
+                                    name: func.name.clone(),
+                                    location: "TODO_LOCATION".to_string(),
+                                })
+                            },
+                            ide_db::runnables::AppendItem::Module(ref module) => {
+                                lsp_ext::Item::Module(
+                                    lsp_ext::Module {
+                                        id: module.id,
+                                        name: module.name.clone(),
+                                        location: "TODO_LOCATION".to_string(),
+                                    }
+                                )
+                            },
+                        };
+                        lsp_ext::Append {
+                            target_id: i.target_id,
+                            item,
+                        }
+                    }).collect();
 
-                //     conv_patch.update = patch.update.iter().map(|item| {
-                //         todo!()
-                //     }).collect();
-                // }
+                    conv_patch.update = patch.update.iter().map(|item| {
+                        todo!()
+                    }).collect();
+                }
                 
-                // eprint!("Send patch: {:?}", patch);
-                // // TODO: it is just ilining of `self.send_notification` and internal call of `send`,
-                // // becouse we can have partial borrowing only at on the border with a closure
-                // let not = lsp_server::Notification::new(lsp_ext::DataUpdate::METHOD.to_string(), conv_patch);
-                // sender.send(not.into()).unwrap();
+                eprint!("Send patch: {:?}", patch);
+                // TODO: it is just ilining of `self.send_notification` and internal call of `send`,
+                // becouse we can have partial borrowing only at on the border with a closure
+                let not = lsp_server::Notification::new(lsp_ext::DataUpdate::METHOD.to_string(), conv_patch);
+                sender.send(not.into()).unwrap();
                 
                 patch.was_consumed();
             }

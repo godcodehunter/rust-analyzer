@@ -637,7 +637,7 @@ pub struct Package {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Crate {
-    pub id: usize,
+    pub id: u128,
     pub name: String,
     pub location: String,
 }
