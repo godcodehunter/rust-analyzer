@@ -60,7 +60,7 @@ impl GlobalState {
         let _p = profile::span("GlobalState::update_configuration");
         let old_config = mem::replace(&mut self.config, Arc::new(config));
         if self.config.lru_capacity() != old_config.lru_capacity() {
-            self.analysis_host.update_lru_capacity(self.config.lru_capacity());
+            self.analysis_host.lock().update_lru_capacity(self.config.lru_capacity());
         }
         if self.config.linked_projects() != old_config.linked_projects() {
             self.fetch_workspaces_queue.request_op("linked projects changed".to_string())
@@ -68,10 +68,11 @@ impl GlobalState {
             self.reload_flycheck();
         }
 
-        if self.analysis_host.raw_database().enable_proc_attr_macros()
+        if self.analysis_host.lock().raw_database().enable_proc_attr_macros()
             != self.config.expand_proc_attr_macros()
         {
             self.analysis_host
+                .lock()
                 .raw_database_mut()
                 .set_enable_proc_attr_macros(self.config.expand_proc_attr_macros());
         }
@@ -368,7 +369,7 @@ impl GlobalState {
 
         self.source_root_config = project_folders.source_root_config;
 
-        self.analysis_host.apply_change(change);
+        self.analysis_host.lock().apply_change(change);
         self.process_changes();
         self.reload_flycheck();
         tracing::info!("did switch workspaces");

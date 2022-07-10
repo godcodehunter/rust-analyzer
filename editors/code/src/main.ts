@@ -10,8 +10,10 @@ import { PersistentState } from "./persistent_state";
 import { activateTaskProvider } from "./tasks";
 import { setContextValue } from "./util";
 import { exec } from "child_process";
+import { TestExplorerProvider } from "./runnables/test_explorer";
 
 let ctx: Ctx | undefined;
+let testExplorer: TestExplorerProvider | undefined;
 
 const RUST_PROJECT_CONTEXT_NAME = "inRustProject";
 
@@ -94,7 +96,8 @@ async function tryActivate(context: vscode.ExtensionContext): Promise<RustAnalyz
         null,
         ctx.subscriptions
     );
-    new TestExplorerProvider(ctx);
+    
+    testExplorer = new TestExplorerProvider(ctx.client);
 
     return {
         client: ctx.client,

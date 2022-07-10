@@ -246,9 +246,10 @@ impl GlobalState {
             (change, changed_files)
         };
 
-        self.analysis_host.apply_change(change);
+        let mut host = self.analysis_host.lock();
+        host.apply_change(change);
 
-        let raw_database = &self.analysis_host.raw_database();
+        let raw_database = host.raw_database();
         self.proc_macro_changed =
             changed_files.iter().filter(|file| !file.is_created_or_deleted()).any(|file| {
                 let crates = raw_database.relevant_crates(file.file_id);
@@ -334,7 +335,7 @@ impl GlobalState {
 
 impl Drop for GlobalState {
     fn drop(&mut self) {
-        self.analysis_host.request_cancellation();
+        self.analysis_host.lock().request_cancellation();
     }
 }
 

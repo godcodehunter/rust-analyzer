@@ -1,14 +1,11 @@
 use hir::Function;
 use base_db::FileId;
-use hir_def::item_tree::Mod;
 use syntax::TextRange;
-use serde::{Deserialize, Serialize};
 
 pub type Id = u128;
 
 /// Defines the kind of [RunnableFunc]
 #[derive(PartialEq, Eq, Debug, Clone)]
-#[derive(Serialize)]
 pub enum RunnableFuncKind {
     /// The [unit test function](https://doc.rust-lang.org/reference/attributes/testing.html?highlight=test#testing-attributes),
     /// i.e. function marked with `#[test]` attribute and whose signature satisfies requirements.
@@ -34,32 +31,26 @@ pub struct DoctestLocation {
 /// these are special inserts into mardown that contain Rust code and can be executed
 /// as tests.
 #[derive(PartialEq, Eq, Debug, Clone)]
-#[derive(Serialize)]
 pub struct Doctest {
     pub id: Id,
-    #[serde(skip_serializing)]
     pub location: DoctestLocation,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-#[derive(Serialize)]
 pub struct RunnableFunc {
     pub id: Id,
     pub name: String,
     pub kind: RunnableFuncKind,
-    #[serde(skip_serializing)]
     pub location: Function,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-#[derive(Serialize)]
 pub enum Runnable {
     Function(RunnableFunc),
     Doctest(Doctest),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-#[derive(Serialize)]
 pub struct MacroCall {
     pub id: Id,
     call: (),
@@ -67,24 +58,20 @@ pub struct MacroCall {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-#[derive(Serialize)]
 pub struct Module {
     pub id: Id,
     pub name: String,
-    #[serde(skip_serializing)]
     pub location: hir::Module,
     pub content: Vec<Content>,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-#[derive(Serialize)]
 pub enum Node {
     MacroCall(MacroCall),
     Module(Module),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-#[derive(Serialize)]
 pub enum Content {
     Node(Node),
     Leaf(Runnable),

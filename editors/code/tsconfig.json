@@ -1,9 +1,9 @@
 {
     "compilerOptions": {
         "module": "commonjs",
-        "target": "es2021",
+        "target": "es2022",
         "outDir": "out",
-        "lib": ["es2021"],
+        "lib": ["es2022"],
         "sourceMap": true,
         "rootDir": ".",
         "strict": true,

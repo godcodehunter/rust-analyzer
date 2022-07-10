@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 use base_db::{salsa, FileId, SourceDatabaseExt, SourceRoot, Upcast};
 use either::Either;
 use hir::{self, db::HirDatabase, Crate, HasAttrs, HasSource, ModuleDef, Semantics};
-use rustc_hash::FxHashMap;
 use syntax::{
     ast::{self, HasAttrs as _},
     AstNode,
@@ -20,6 +19,8 @@ use algo::*;
 
 pub use runnable_view::*;
 pub use delta_patches::*;
+
+use crate::RootDatabase;
 
 // TODO: Dirty code, probably it should be, for example, member of [hir::Crate]
 fn crate_source_root(db: &dyn RunnableDatabase, krate: Crate) -> Arc<SourceRoot> {
@@ -170,47 +171,45 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Module> 
 
     let _p = profile::span("file_runnables");
 
-    let sema = Semantics::new(db.upcast());
-
     let mut patch = self::patch().lock().unwrap();
     let mut res = None;
 
     visit_file_defs_with_path(
-        db,
-        &sema,
+        db.upcast(),
         file_id,
-        |db: &dyn RunnableDatabase,
-         sema: &Semantics,
+        |
+         db: &dyn HirDatabase,
          path: &mut MutalPath,
          def: Either<hir::ModuleDef, hir::Impl>| {
             // TODO: vector of static size 2 on the stack
             let mut runnables = vec![];
             if let Some(doctest) = match def {
                 Either::Left(m) => match m {
-                    ModuleDef::Module(i) => has_doctest(db.upcast(), i),
-                    ModuleDef::Function(i) => has_doctest(db.upcast(), i),
-                    ModuleDef::Adt(i) => has_doctest(db.upcast(), i),
-                    ModuleDef::Variant(i) => has_doctest(db.upcast(), i),
-                    ModuleDef::Const(i) => has_doctest(db.upcast(), i),
-                    ModuleDef::Static(i) => has_doctest(db.upcast(), i),
-                    ModuleDef::Trait(i) => has_doctest(db.upcast(), i),
-                    ModuleDef::TypeAlias(i) => has_doctest(db.upcast(), i),
+                    ModuleDef::Module(i) => has_doctest(db, i),
+                    ModuleDef::Function(i) => has_doctest(db, i),
+                    ModuleDef::Adt(i) => has_doctest(db, i),
+                    ModuleDef::Variant(i) => has_doctest(db, i),
+                    ModuleDef::Const(i) => has_doctest(db, i),
+                    ModuleDef::Static(i) => has_doctest(db, i),
+                    ModuleDef::Trait(i) => has_doctest(db, i),
+                    ModuleDef::TypeAlias(i) => has_doctest(db, i),
                     ModuleDef::BuiltinType(_) => None,
+                    _ => {todo!()},
                 },
-                Either::Right(_impl) => has_doctest(db.upcast(), _impl),
+                Either::Right(_impl) => has_doctest(db, _impl),
             } {
                 runnables.push(doctest);
             }
 
             if let Some(function) = match def {
-                Either::Left(hir::ModuleDef::Function(it)) => runnable_fn(&sema, it),
+                Either::Left(hir::ModuleDef::Function(it)) => runnable_fn(db, it),
                 _ => None,
             } {
                 runnables.push(function);
             }
 
             if !runnables.is_empty() {
-                store_runnables(db.upcast(), &mut res, path, &mut patch, &runnables);
+                store_runnables(db, &mut res, path, &mut patch, &runnables);
             }
         },
     );
@@ -300,7 +299,7 @@ fn validate_bench_signature() {
 }
 
 /// Creates a test mod runnable for outline modules at the top of their definition.
-fn runnable_mod_outline_definition(sema: &Semantics, def: hir::Module) -> Option<Content> {
+fn runnable_mod_outline_definition(sema: &Semantics<RootDatabase>, def: hir::Module) -> Option<Content> {
     // if !is_contains_runnable(sema, &def) {
     //     return None;
     // }
@@ -335,13 +334,13 @@ fn has_doctest<AtrOwner: HasAttrs>(
 }
 
 /// Checks if a [hir::Function] is runnable and if it is, then construct [Runnable] from it
-fn runnable_fn(sema: &Semantics, def: hir::Function) -> Option<Runnable> {
-    let func = def.source(sema.db)?;
-    let name_string = def.name(sema.db).to_string();
+fn runnable_fn(db: &dyn HirDatabase, def: hir::Function) -> Option<Runnable> {
+    let func = def.source(db)?;
+    let name_string = def.name(db).to_string();
 
-    let root = def.module(sema.db).krate().root_module(sema.db);
+    let root = def.module(db).krate().root_module(db);
 
-    let kind = if name_string == "main" && def.module(sema.db) == root {
+    let kind = if name_string == "main" && def.module(db) == root {
         Some(RunnableFuncKind::Bin)
     } else {
         if extract_test_related_attribute(&func.value).is_some() {

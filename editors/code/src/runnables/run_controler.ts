@@ -2,6 +2,7 @@ import { Ctx } from '../ctx';
 import * as ra from '../lsp_ext';
 import * as vscode from 'vscode';
 import { RunStatusUpdate } from '../lsp_ext';
+import { LanguageClient } from 'vscode-languageclient/node';
 
 /**
  * Provides an API for creation and control tests run, and receiving notification of its
@@ -11,8 +12,8 @@ export class TestRunControler {
     private readonly client;
     private readonly emitter;
 
-    constructor(ctx: Ctx) {
-        this.client = ctx.client;
+    constructor(client: LanguageClient) {
+        this.client = client;
         this.emitter = new vscode.EventEmitter<RunStatusUpdate>();
         this.onStatusUpdate = this.emitter.event;
         this.client.onNotification(ra.runStatus, this.emitter.fire);

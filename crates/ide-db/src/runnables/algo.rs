@@ -62,24 +62,40 @@ pub fn syn_branches<'path>(
 
 /// Iterates all `ModuleDef`s and `Impl` blocks of the given file,   
 pub fn visit_file_defs_with_path(
-    db: &dyn RunnableDatabase,
-    sema: &Semantics<RootDatabase>,
+    db: &dyn HirDatabase,
     file_id: FileId,
     mut callback: impl FnMut(
-        &dyn RunnableDatabase,
-        &Semantics,
+        &dyn HirDatabase,
         &mut MutalPath,
         Either<hir::ModuleDef, hir::Impl>,
     ),
 ) {
-    let module = match sema.to_module_def(file_id) {
+    fn file_to_def(db: &dyn HirDatabase, file: FileId) -> Option<hir::Module> {
+        let _p = profile::span("SourceBinder::to_module_def");
+        let mut mods = Vec::new();
+        for &crate_id in db.relevant_crates(file).iter() {
+            // FIXME: inner items
+            let crate_def_map = db.crate_def_map(crate_id);
+            mods.extend(
+                crate_def_map
+                    .modules_for_file(file)
+                    .map(|local_id| crate_def_map.module_id(local_id)),
+            )
+        }
+        mods.into_iter().map(hir::Module::from).next()
+    }
+
+    // TODO: 
+    // sema.to_module_def(file_id)
+
+    let module = match file_to_def(db, file_id) {
         Some(it) => it,
         None => return,
     };
 
     let mut path = MutalPath::new();
 
-    let declarations = module.declarations(sema.db);
+    let declarations = module.declarations(db);
     if declarations.is_empty() {
         return;
     }
@@ -100,16 +116,16 @@ pub fn visit_file_defs_with_path(
             path.pop();
         }
 
-        callback(db, sema, &mut path, Either::Left(defenition));
+        callback(db, &mut path, Either::Left(defenition));
         if let ModuleDef::Module(module) = defenition {
-            for impl_ in module.impl_defs(sema.db) {
-                callback(db, sema, &mut path, Either::Right(impl_))
+            for impl_ in module.impl_defs(db) {
+                callback(db, &mut path, Either::Right(impl_))
             }
         }
 
         if let ModuleDef::Module(module) = defenition {
-            if let hir::ModuleSource::Module(_) = module.definition_source(sema.db).value {
-                let declartions = module.declarations(sema.db);
+            if let hir::ModuleSource::Module(_) = module.definition_source(db).value {
+                let declartions = module.declarations(db);
                 if !declartions.is_empty() {
                     path.push(Bijection { origin: module, accord: None });
                     walk_queue.push((module, declartions));

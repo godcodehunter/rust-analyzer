@@ -3,6 +3,7 @@ import * as path from 'path';
 import { Ctx } from '../ctx';
 import * as ra from '../lsp_ext';
 import { RunStatusUpdate, RunStatusUpdateKind } from '../lsp_ext';
+import { LanguageClient } from 'vscode-languageclient/node';
 import { TestRunControler } from "./run_controler";
 import * as tree from './tree_view';
 
@@ -294,11 +295,11 @@ export class TestExplorerProvider {
 
     /// Create TestController, set onDidChangeTreeData notified listener function,
     /// create two profile for usually run and debug 
-    constructor(ctx: Ctx) {
-        this.testExecutor = new TestRunControler(ctx);
+    constructor(client: LanguageClient) {
+        this.testExecutor = new TestRunControler(client);
         this.controller = vscode.tests.createTestController("rust-analyzer", "rust");
                 
-        ctx.client.onNotification(ra.dataUpdate, (params) => {
+        client.onNotification(ra.dataUpdate, (params) => {
             this.applyUpdate(params);
         })
         

@@ -40,6 +40,14 @@ impl<T> TaskPool<T> {
         })
     }
 
+    pub(crate) fn spawn_silent<F>(&mut self, task: F) 
+    where
+        F: FnOnce() + Send + 'static
+    {
+        self.inner.execute(task)
+    }
+
+
     pub(crate) fn len(&self) -> usize {
         self.inner.queued_count()
     }

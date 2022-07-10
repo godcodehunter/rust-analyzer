@@ -69,7 +69,8 @@ pub type FxIndexMap<K, V> =
     hir::db::HirDatabaseStorage,
     hir::db::InternDatabaseStorage,
     LineIndexDatabaseStorage,
-    symbol_index::SymbolsDatabaseStorage
+    symbol_index::SymbolsDatabaseStorage,
+    runnables::RunnableDatabaseStorage,
 )]
 pub struct RootDatabase {
     // We use `ManuallyDrop` here because every codegen unit that contains a
@@ -108,6 +109,13 @@ impl Upcast<dyn HirDatabase> for RootDatabase {
         &*self
     }
 }
+
+impl Upcast<dyn runnables::RunnableDatabase> for RootDatabase {
+    fn upcast(&self) -> &(dyn runnables::RunnableDatabase + 'static) {
+        &*self
+    }
+}
+
 
 impl FileLoader for RootDatabase {
     fn file_text(&self, file_id: FileId) -> Arc<String> {

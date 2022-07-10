@@ -6,9 +6,9 @@ mod tests;
 use std::iter;
 
 use either::Either;
-use hir::{HasSource, Semantics};
+use hir::{HasSource, Semantics, Function};
 use ide_db::{
-    base_db::FileRange,
+    base_db::{FileRange, Upcast},
     defs::{Definition, IdentClass},
     famous_defs::FamousDefs,
     helpers::pick_best_token,
@@ -297,40 +297,46 @@ fn runnable_action(
 ) -> Option<HoverAction> {
     use ide_db::runnables::*;
 
-    let rnb: &dyn RunnableDatabase = sema.db.upcast();
-    let rnbls = rnb.file_runnables(file_id);
-    if let (Some(module), Definition::ModuleDef(mod_def)) = (rnbls, def) {
-        match mod_def {
-            hir::ModuleDef::Module(it) => {
-                return find_by_def(IterItem::Module(&module), it)
-                        .map(|i| { 
-                            let r = match i {
-                                IterItem::Module(module) => Content::Node(Node::Module(module.clone())),
-                                _ => unreachable!(),
-                            };
-                            HoverAction::Runnable(self::Runnable::from_db_repr(db, sema, &r))
-                        });
-            }
-            hir::ModuleDef::Function(it) => {
-                let src = it.source(sema.db)?;
-                if src.file_id != file_id.into() {
-                    cov_mark::hit!(hover_macro_generated_struct_fn_doc_comment);
-                    cov_mark::hit!(hover_macro_generated_struct_fn_doc_attr);
-                    return None;
-                }
+    fn is_from_macro(db: &RootDatabase, file_id: FileId, func: Function) -> bool {
+        let src = func.source(db);
+        // TODO: Why source can be None?
+        if src.is_none() {
+            return true;
+        }
+        if src.unwrap().file_id != file_id.into() {
+            cov_mark::hit!(hover_macro_generated_struct_fn_doc_comment);
+            cov_mark::hit!(hover_macro_generated_struct_fn_doc_attr);
+            return true;
+        }   
+        false 
+    }
 
+    let rnb: &dyn RunnableDatabase = sema.db.upcast();
+    if let Some(module) = rnb.file_runnables(file_id) {
+        match def {
+            Definition::Module(it) => {
+                return find_by_def(IterItem::Module(&module), it)
+                    .map(|i| { 
+                        let r = match i {
+                            IterItem::Module(module) => Content::Node(Node::Module(module.clone())),
+                            _ => unreachable!(),
+                        };
+                        HoverAction::Runnable(self::Runnable::from_db_repr(sema, &r))
+                    })
+            },
+            Definition::Function(it) if !is_from_macro(sema.db, file_id, it) => {
                 return find_by_def(IterItem::Module(&module), it)
                         .map(|i| { 
                             let r = match i {
                                 IterItem::RunnableFunc(func) => Content::Leaf(Runnable::Function(func.clone())),
                                 _ => unreachable!(),
                             };
-                            HoverAction::Runnable(self::Runnable::from_db_repr(db, sema, &r))
+                            HoverAction::Runnable(self::Runnable::from_db_repr(sema, &r))
                         });
-            }
-            _ => {}
+            },
+            _ => {},
         }
-    }
+    };
 
     None
 }

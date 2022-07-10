@@ -425,7 +425,7 @@ impl Analysis {
         position: FilePosition,
         search_scope: Option<SearchScope>,
     ) -> Cancellable<Option<Vec<ReferenceSearchResult>>> {
-        self.with_db(|db| references::find_all_refs(db, &Semantics::new(db), position, search_scope))
+        self.with_db(|db| references::find_all_refs(&Semantics::new(db), position, search_scope))
     }
 
     /// Finds all methods and free functions for the file. Does not return tests!
@@ -503,7 +503,7 @@ impl Analysis {
 
     /// Returns the set of possible targets to run for the current file.
     pub fn runnables(&self, file_id: FileId) -> Cancellable<Vec<Runnable>> {
-        self.with_db(|db| runnables::runnables(db, file_id))
+        self.with_db(|db| runnables::runnables(&Semantics::new(db), file_id))
     }
 
     /// Returns the set of tests for the given file position.
@@ -527,7 +527,7 @@ impl Analysis {
         position: FilePosition,
     ) -> Cancellable<Option<Vec<HighlightedRange>>> {
         self.with_db(|db| {
-            highlight_related::highlight_related(db, &Semantics::new(db), config, position)
+            highlight_related::highlight_related(&Semantics::new(db), config, position)
         })
     }
 
@@ -648,7 +648,7 @@ impl Analysis {
             let mut match_finder =
                 ide_ssr::MatchFinder::in_context(db, resolve_context, selections)?;
             match_finder.add_rule(rule)?;
-            let edits = if parse_only { Default::default() } else { match_finder.edits(db) };
+            let edits = if parse_only { Default::default() } else { match_finder.edits() };
             Ok(SourceChange::from(edits))
         })
     }

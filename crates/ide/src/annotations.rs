@@ -48,10 +48,11 @@ pub(crate) fn annotations(
     config: &AnnotationConfig,
     file_id: FileId,
 ) -> Vec<Annotation> {
-    let mut annotations = Vec::default();
+    let sema = Semantics::new(db);
 
+    let mut annotations = Vec::default();
     if config.annotate_runnables {
-        for runnable in runnables(db, file_id) {
+        for runnable in runnables(&sema, file_id) {
             if should_skip_runnable(&runnable.kind, config.binary_target) {
                 continue;
             }
@@ -62,7 +63,7 @@ pub(crate) fn annotations(
         }
     }
 
-    visit_file_defs(&Semantics::new(db), file_id, &mut |def| {
+    visit_file_defs(&sema, file_id, &mut |def| {
         let range = match def {
             Definition::Const(konst) if config.annotate_references => {
                 konst.source(db).and_then(|node| name_range(db, node, file_id))

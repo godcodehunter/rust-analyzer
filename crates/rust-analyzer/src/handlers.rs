@@ -31,7 +31,7 @@ use stdx::{format_to, never};
 use syntax::{algo, ast, AstNode, TextRange, TextSize, T};
 use vfs::AbsPathBuf;
 
-use crate::{global_state::FollowedData, lsp_ext::{RunTestsParams, AbortTestsParams, UnsubscriptionRequestParams}};
+use crate::{global_state::FollowedData, lsp_ext::{RunTestsParams, AbortTestsParams, UnsubscriptionRequestParams, SubscriptionResponce, SubscriptionError}};
 use crate::{
     cargo_target_spec::CargoTargetSpec,
     config::{RustfmtConfig, WorkspaceSymbolConfig},
@@ -187,7 +187,7 @@ pub(crate) fn handle_memory_usage(state: &mut GlobalState, _: ()) -> Result<Stri
 }
 
 pub(crate) fn handle_shuffle_crate_graph(state: &mut GlobalState, _: ()) -> Result<()> {
-    state.analysis_host.shuffle_crate_graph();
+    state.analysis_host.lock().shuffle_crate_graph();
     Ok(())
 }
 

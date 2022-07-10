@@ -181,8 +181,6 @@ export const enum Direction {
     Down = "Down",
 }
 
-export const moveItem = new lc.RequestType<MoveItemParams, lc.TextEdit[], void>("experimental/moveItem");
-
 export const dataUpdate = new lc.NotificationType<any>("data/update");
 
 export enum RunKind {
