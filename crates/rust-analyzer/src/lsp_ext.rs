@@ -604,21 +604,21 @@ pub struct Patch {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Delete {
-    pub target_id: u128,
-    pub item_id: u128,
+    pub target_id: String,
+    pub item_id: String,
 } 
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Update {
-    pub target_id: u128,
+    pub target_id: String,
     pub changes: Changes, 
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Append {
-    pub target_id: u128,
+    pub target_id: String,
     pub item: Item,
 }
 
@@ -643,7 +643,7 @@ pub enum Item {
 #[serde(rename_all = "camelCase")]
 
 pub struct Package {
-    id: usize,
+    id: String,
     name: String,
     location: String,
 }
@@ -651,7 +651,7 @@ pub struct Package {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Crate {
-    pub id: u128,
+    pub id: String,
     pub name: String,
     pub location: String,
 }
@@ -659,7 +659,7 @@ pub struct Crate {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Module {
-    pub id: u128,
+    pub id: String,
     pub name: String,
     pub location: String,
 }
@@ -667,7 +667,7 @@ pub struct Module {
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Function {
-    pub id: u128,
+    pub id: String,
     pub name: String,
     pub location: String,
     // range: [[number, number], [number, number]];

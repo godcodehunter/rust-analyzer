@@ -68,7 +68,7 @@ impl Executor {
                 Ok(Some(status)) => {
                     match status.exit_ok() {
                         Ok(_) => {
-                            self.current_status.insert(*id, RunStatus {
+                            self.current_status.insert(id.clone(), RunStatus {
                                 state: ExectuinState::Passed,
                                 message: todo!(),
                                 duration: todo!(),
@@ -90,7 +90,7 @@ impl Executor {
         });
     }
 
-    pub fn run_tests(&mut self, ids: impl Iterator<Item = Id>) {
+    pub fn run_tests(&mut self, ids: impl IntoIterator<Item = Id>) {
         unsafe {
             for id in ids {
                 if self.executing.get(&id).is_some() {
@@ -172,7 +172,7 @@ impl Executor {
         }
     }
 
-    pub fn abort_tests(&mut self, ids: impl Iterator<Item = Id>) {
+    pub fn abort_tests(&mut self, ids: impl IntoIterator<Item = Id>) {
         for id in ids {
             let value = self.executing.remove(&id);
             match value {

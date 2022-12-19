@@ -2,7 +2,7 @@ use hir::Function;
 use base_db::FileId;
 use syntax::TextRange;
 
-pub type Id = u128;
+pub type Id = String;
 
 /// Defines the kind of [RunnableFunc]
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -205,12 +205,12 @@ pub fn find_by_id(root: IterItem, id: Id) -> Option<IterItem> {
     let mut res = None;
     dfs(root, |item| {
         let node_id = match item {
-            IterItem::Crate(krate) => krate.id,
-            IterItem::MacroCall(macrocall) => macrocall.id,
-            IterItem::Module(module) => module.id,
-            IterItem::Session(_) => 0,
-            IterItem::RunnableFunc(func) => func.id,
-            IterItem::Doctest(doctest) => doctest.id,
+            IterItem::Crate(krate) => krate.id.clone(),
+            IterItem::MacroCall(macrocall) => macrocall.id.clone(),
+            IterItem::Module(module) => module.id.clone(),
+            IterItem::Session(_) => "0".to_owned(),
+            IterItem::RunnableFunc(func) => func.id.clone(),
+            IterItem::Doctest(doctest) => doctest.id.clone(),
         };
         if node_id == id {
             res = Some(item);

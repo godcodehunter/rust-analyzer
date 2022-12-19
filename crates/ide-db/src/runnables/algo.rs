@@ -43,7 +43,7 @@ pub fn syn_branches<'path>(
         };
         
         let node = Module { 
-            id: uuid::Uuid::new_v4().as_u128(), 
+            id: uuid::Uuid::new_v4().as_u128().to_string(), 
             name, 
             location: next.origin, 
             content: Default::default(), 

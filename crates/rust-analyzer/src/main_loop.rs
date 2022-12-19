@@ -879,8 +879,8 @@ impl GlobalState {
 
                     conv_patch.delete = patch.delete.iter().map(|item| {
                         lsp_ext::Delete {
-                            target_id: item.target_id,
-                            item_id: item.item_id,
+                            target_id: item.target_id.clone(),
+                            item_id: item.item_id.clone(),
                         }
                     }).collect();
 
@@ -888,14 +888,14 @@ impl GlobalState {
                         let item = match i.item {
                             ide_db::runnables::AppendItem::Crate(ref krate) => {
                                 lsp_ext::Item::Crate(lsp_ext::Crate {
-                                    id: krate.id,
+                                    id: krate.id.clone(),
                                     name: krate.name.clone(),
                                     location: "TODO_LOCATION".to_string(),
                                 })
                             },
                             ide_db::runnables::AppendItem::Function(ref func) => {
                                 lsp_ext::Item::Function(lsp_ext::Function {
-                                    id: func.id,
+                                    id: func.id.clone(),
                                     name: func.name.clone(),
                                     location: "TODO_LOCATION".to_string(),
                                 })
@@ -903,7 +903,7 @@ impl GlobalState {
                             ide_db::runnables::AppendItem::Module(ref module) => {
                                 lsp_ext::Item::Module(
                                     lsp_ext::Module {
-                                        id: module.id,
+                                        id: module.id.clone(),
                                         name: module.name.clone(),
                                         location: "TODO_LOCATION".to_string(),
                                     }
@@ -911,7 +911,7 @@ impl GlobalState {
                             },
                         };
                         lsp_ext::Append {
-                            target_id: i.target_id,
+                            target_id: i.target_id.clone(),
                             item,
                         }
                     }).collect();

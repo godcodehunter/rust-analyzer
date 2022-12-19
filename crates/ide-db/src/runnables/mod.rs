@@ -78,7 +78,7 @@ fn crate_runnables(db: &dyn RunnableDatabase, krate: Crate) -> Option<runnable_v
     };
 
     let mut res = runnable_view::Crate{ 
-        id: uuid::Uuid::new_v4().as_u128(), 
+        id: uuid::Uuid::new_v4().as_u128().to_string(), 
         name, 
         modules: Default::default(),
     };
@@ -121,7 +121,7 @@ fn file_runnables(db: &dyn RunnableDatabase, file_id: FileId) -> Option<Module> 
                 };
 
                 let item = Module {
-                    id: uuid::Uuid::new_v4().as_u128(),
+                    id: uuid::Uuid::new_v4().as_u128().to_string(),
                     name,
                     location: first.origin,
                     content: Default::default(),
@@ -354,7 +354,7 @@ fn runnable_fn(db: &dyn HirDatabase, def: hir::Function) -> Option<Runnable> {
 
     if let Some(kind) = kind {
         // TODO: func id 
-        Some(Runnable::Function(RunnableFunc { id: 1, name: name_string, kind, location: def, }))
+        Some(Runnable::Function(RunnableFunc { id: uuid::Uuid::new_v4().as_u128().to_string(), name: name_string, kind, location: def, }))
     } else {
         None
     }

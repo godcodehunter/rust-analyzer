@@ -164,13 +164,12 @@ pub(crate) fn handle_unsubscription(state: &mut GlobalState, params: Unsubscript
 pub(crate) fn handle_run_tests(state: &mut GlobalState, params: RunTestsParams) -> Result<()> {
     // TODO: params.exclude, params.run_kind
     // TODO: id type
-    state.executor.lock().run_tests(params.include.into_iter().map(|i| i.parse::<u128>().unwrap()));
+    state.executor.lock().run_tests(params.include);
     Ok(())
 }
 
 pub(crate) fn handle_abort_tests(state: &mut GlobalState, params: AbortTestsParams) -> Result<()> {
-    let ids = params.exact.into_iter().map(|i| i.parse::<u128>().unwrap());
-    state.executor.lock().abort_tests(ids);
+    state.executor.lock().abort_tests(params.exact);
     Ok(())
 }
 

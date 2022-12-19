@@ -1,3 +1,9 @@
+export type TestId = string;
+export type TestLocation = string;
+export type TextRange = [[number, number], [number, number]];
+
+/// Defines test tree parts of which 
+
 export type Node = Session | Crate | Module | Function;
 
 export enum NodeKind {
@@ -8,25 +14,25 @@ export enum NodeKind {
 }
 
 export interface Session {
-    kind: NodeKind.Session;
+    tag: NodeKind.Session;
     crates: Crate[];
 }
 
 export interface Crate {
-    kind: NodeKind.Crate;
-    id: string;
+    tag: NodeKind.Crate;
+    id: TestId;
     name: string;
+    location: TestLocation;
     modules: Module[];
-    location: string;
 }
 
 export interface Module {
-    kind: NodeKind.Module;
-    id: string;
+    tag: NodeKind.Module;
+    id: TestId;
     name: string;
+    location: TestLocation;
     modules?: Module[];
     targets?: Function[];
-    location: string;
 }
 
 export enum TestKind {
@@ -36,15 +42,15 @@ export enum TestKind {
 }
 
 export interface Function {
-    kind: NodeKind.Function;
-    id: string;
+    tag: NodeKind.Function;
+    id: TestId;
     name: string;
-    location: string;
-    range: [[number, number], [number, number]];
+    location: TestLocation;
+    range: TextRange;
     testKind: TestKind;
 }
 
-/// The view synchronized with RA data by `DeltaUpdate`'s. The update is an array   
+/// The view synchronized with server data by `DeltaUpdate`'s. The update is an array   
 /// of elementary actions called a `Patch`. After applying an update to the tree 
 /// it will become synchronized.
 ///
@@ -53,18 +59,18 @@ export interface Function {
 /// and must be applied in order
 
 export interface DeltaUpdate {
-    id: number,
+    id: TestId,
     delete: Delete[],
     update: Update[],
     append: Append[]
 }
 
 interface Delete {
-    targetId: number;
+    targetId: TestId;
 }
 
 export interface Update {
-    targetId: number;
+    targetId: TestId;
     payload: {
         name?: string;
         location?: string;
@@ -75,6 +81,6 @@ export interface Update {
 type AppendItem = Crate | Module | Function;
 
 interface Append {
-    targetId: number;
+    targetId: TestId;
     item: AppendItem;
 }

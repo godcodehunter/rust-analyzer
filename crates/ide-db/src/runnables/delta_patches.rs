@@ -118,10 +118,10 @@ impl<'a, 'b> ItemMutator<'a, 'b> {
 
     fn target_id(&self) -> Id {
         match &self.target {
-            RefNode::Session(_) => 0,
-            RefNode::Crate(krate) => krate.id,
-            RefNode::MacroCall(macrocall) => macrocall.id,
-            RefNode::Module(module) => module.id,
+            RefNode::Session(_) => "0".to_owned(),
+            RefNode::Crate(krate) => krate.id.clone(),
+            RefNode::MacroCall(macrocall) => macrocall.id.clone(),
+            RefNode::Module(module) => module.id.clone(),
         }
     }
 }

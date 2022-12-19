@@ -13,105 +13,6 @@ function getIconUri(iconName: string, theme: string): vscode.Uri {
     return vscode.Uri.file(path.join(iconsRootPath, theme, `${iconName}.svg`));
 }
 
-// class Session {
-//     constructor() {
-//         this.id = "0";
-//         this.crates = [];
-//     }
-//     getChildren(): Crate[] {
-//         return this.crates;
-//     }
-// }
-
-// class Crate extends vscode.TreeItem {
-//     constructor(
-//         id: string,
-//         name: string,
-//         modules: Module[],
-//         location: string,
-//     ) {
-//         super(name, vscode.TreeItemCollapsibleState.Collapsed);
-//         this.tooltip = location;
-//         this.id = id;
-//         this.modules = modules;
-//     }
-
-//     iconPath = {
-//         light: getIconUri('squares', 'dark'),
-//         dark: getIconUri('squares', 'dark'),
-//     };
-
-//     getChildren(): Module[] {
-//         return this.modules;
-//     }
-// }
-
-// class Module extends vscode.TreeItem {
-//     constructor(
-//         id: string,
-//         name: string,
-//         location: string,
-//         modules?: Module[],
-//         targets?: Function[],
-//     ) {
-//         super(name, vscode.TreeItemCollapsibleState.Collapsed);
-//         this.location = location;
-//         this.modules = modules;
-//         this.targets = targets;
-//         this.id = id;
-//     }
-
-//     iconPath = {
-//         light: getIconUri('squares', 'dark'),
-//         dark: getIconUri('squares', 'dark'),
-//     };
-
-//     getChildren(): (Function | Module)[] {
-//         var res: (Function | Module)[] = [];
-//         if (this.targets != undefined) {
-//             res.push(...this.targets);
-//         }
-//         if (this.modules != undefined) {
-//             res.push(...this.modules);
-//         }
-//         return res;
-//     }
-// }
-
-// class Function extends vscode.TreeItem {
-//     constructor(
-//         id: string,
-//         name: string,
-//         location: string,
-//         kind: TestKind,
-//     ) {
-//         super(name, vscode.TreeItemCollapsibleState.None);
-//         this.location = location;
-//         this.id = id;
-
-//         switch (kind) {
-//             case TestKind.Bench: {
-//                 this.iconPath = {
-//                     light: getIconUri('accelerator', 'dark'),
-//                     dark: getIconUri('accelerator', 'dark'),
-//                 };
-//                 break;
-//             }
-//             case TestKind.Test: {
-//                 this.iconPath = {
-//                     light: getIconUri('test_sheet', 'dark'),
-//                     dark: getIconUri('test_sheet', 'dark'),
-//                 };
-//                 break;
-//             }
-//         }
-//     }
-
-//     getChildren(): null {
-//         return null;
-//     }
-// }
-
 export class TestExplorerProvider {
     private controller: vscode.TestController;
     private testExecutor: TestRunControler;
@@ -208,8 +109,10 @@ export class TestExplorerProvider {
             
             let append = popIf(deltaUpdate.append, pred);
             if (append !== undefined) {
-                let apended = append.item;
-                let item = this.controller.createTestItem(apended.id, apended.name);
+                console.log("typeof append.item", typeof append.item);
+                const apended = append.item;
+                const conId = apended.id.toString();
+                let item = this.controller.createTestItem(conId, apended.name);
                 parentField.add(item);
             }
         });
@@ -299,9 +202,7 @@ export class TestExplorerProvider {
         this.testExecutor = new TestRunControler(client);
         this.controller = vscode.tests.createTestController("rust-analyzer", "rust");
                 
-        client.onNotification(ra.dataUpdate, (params) => {
-            this.applyUpdate(params);
-        })
+        client.onNotification(ra.dataUpdate, this.applyUpdate);
         
         this.runProfile = this.controller.createRunProfile(
             "Usually run",
